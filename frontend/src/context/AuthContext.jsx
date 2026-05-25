@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { login as apiLogin, getMe, pingPresence } from '../api/client';
-import { clearAuthStorage, setAuthPortal } from '../utils/authStorage';
+import { clearAuthStorage, isAdminLoginPage, setAuthPortal } from '../utils/authStorage';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 const AuthContext = createContext(null);
@@ -20,6 +20,11 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   const loadUser = useCallback(async () => {
+    const onAdminLogin = isAdminLoginPage();
+    if (onAdminLogin) {
+      setAuthPortal('admin');
+    }
+
     const token = localStorage.getItem('access_token');
     const refreshToken = localStorage.getItem('refresh_token');
 
@@ -30,15 +35,29 @@ export function AuthProvider({ children }) {
 
     try {
       const { data } = await getMe();
+      if (onAdminLogin && data.role === 'viewer') {
+        clearAuthStorage();
+        setUser(null);
+        return;
+      }
       setUser(data);
-      setAuthPortal(data.role);
+      if (!onAdminLogin) {
+        setAuthPortal(data.role);
+      }
     } catch {
       if (refreshToken) {
         try {
           await refreshAccessToken();
           const { data } = await getMe();
+          if (onAdminLogin && data.role === 'viewer') {
+            clearAuthStorage();
+            setUser(null);
+            return;
+          }
           setUser(data);
-          setAuthPortal(data.role);
+          if (!onAdminLogin) {
+            setAuthPortal(data.role);
+          }
           return;
         } catch {
           /* fall through */

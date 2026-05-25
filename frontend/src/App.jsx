@@ -1,7 +1,7 @@
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useEffect } from 'react';
 import { useAuth } from './context/AuthContext';
-import { getLoginPath, setAuthPortal } from './utils/authStorage';
+import { getLoginPath, isAdminLoginPage, setAuthPortal } from './utils/authStorage';
 import Layout from './components/Layout';
 import ViewerLayout from './components/viewer/ViewerLayout';
 import Login from './pages/Login';
@@ -47,15 +47,6 @@ function ViewerRoute({ children }) {
   return children;
 }
 
-function GuestAdmin({ children }) {
-  const { user, loading } = useAuth();
-  if (loading) return <LoadingSpinner className="min-h-screen" />;
-  if (user && ['admin', 'operator'].includes(user.role)) {
-    return <Navigate to="/" replace />;
-  }
-  return children;
-}
-
 function GuestViewer({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <LoadingSpinner className="min-h-screen" />;
@@ -84,8 +75,9 @@ export default function App() {
         <Route path="live/:id" element={<ViewerWatch />} />
       </Route>
 
-      {/* لوحة الإدارة */}
-      <Route path="/login" element={<GuestAdmin><Login /></GuestAdmin>} />
+      {/* لوحة الإدارة — بدون إعادة توجيه تلقائي */}
+      <Route path="/login" element={<Login />} />
+      <Route path="/admin/login" element={<Login />} />
       <Route path="/" element={<AdminRoute><Layout /></AdminRoute>}>
         <Route index element={<Dashboard />} />
         <Route path="channels" element={<Channels />} />

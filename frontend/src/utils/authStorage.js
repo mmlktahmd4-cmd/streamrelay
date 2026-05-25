@@ -1,5 +1,9 @@
 const PORTAL_KEY = 'auth_portal';
 
+export function isAdminLoginPage(pathname = window.location.pathname) {
+  return pathname === '/login' || pathname === '/admin/login';
+}
+
 export function setAuthPortal(role) {
   localStorage.setItem(PORTAL_KEY, role === 'viewer' ? 'viewer' : 'admin');
 }
@@ -15,5 +19,6 @@ export function clearAuthStorage() {
 }
 
 export function getLoginPath(portal = getAuthPortal()) {
+  if (isAdminLoginPage()) return '/login';
   return portal === 'viewer' ? '/watch/login' : '/login';
 }

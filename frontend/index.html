@@ -10,6 +10,11 @@
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   </head>
   <body class="bg-surface-950 text-gray-100 antialiased">
+    <script>
+      if (location.pathname === '/login' || location.pathname === '/admin/login') {
+        localStorage.setItem('auth_portal', 'admin');
+      }
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

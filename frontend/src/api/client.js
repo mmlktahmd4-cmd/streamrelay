@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { clearAuthStorage, getLoginPath } from '../utils/authStorage';
+import { clearAuthStorage, getLoginPath, isAdminLoginPage } from '../utils/authStorage';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
@@ -39,8 +39,8 @@ api.interceptors.response.use(
           return api(original);
         } catch {
           clearAuthStorage();
-          if (!String(original?.url || '').includes('/auth/me')) {
-            window.location.href = getLoginPath();
+          if (!isAdminLoginPage() && !String(original?.url || '').includes('/auth/me')) {
+            window.location.href = getLoginPath('admin');
           }
         }
       }

@@ -6,24 +6,30 @@ import { setAuthPortal } from '../utils/authStorage';
 import { Radio, Tv, Shield } from 'lucide-react';
 
 export default function Login() {
-  const { login, logout, user } = useAuth();
+  const { login, logout, user, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [errorHint, setErrorHint] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     setAuthPortal('admin');
   }, []);
 
+  useEffect(() => {
+    if (!loading && user && ['admin', 'operator'].includes(user.role)) {
+      navigate('/', { replace: true });
+    }
+  }, [loading, user, navigate]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setErrorHint('');
-    setLoading(true);
+    setSubmitting(true);
     try {
       if (user?.role === 'viewer') {
         logout();
@@ -39,9 +45,13 @@ export default function Login() {
       setError(getAuthErrorMessage(err, 'admin'));
       setErrorHint(getAuthErrorHint(err, 'admin'));
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
+
+  if (loading) {
+    return <div className="admin-theme min-h-screen flex items-center justify-center text-slate-500">جاري التحميل...</div>;
+  }
 
   return (
     <div className="admin-theme min-h-screen flex">
@@ -112,8 +122,8 @@ export default function Login() {
                 />
               </div>
 
-              <button type="submit" className="btn btn-primary w-full py-2.5 mt-2" disabled={loading}>
-                {loading ? 'جاري الدخول...' : 'دخول لوحة الإدارة'}
+              <button type="submit" className="btn btn-primary w-full py-2.5 mt-2" disabled={submitting}>
+                {submitting ? 'جاري الدخول...' : 'دخول لوحة الإدارة'}
               </button>
             </form>
           </div>
