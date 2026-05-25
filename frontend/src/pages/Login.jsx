@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { getAuthErrorHint, getAuthErrorMessage } from '../utils/authErrors';
 import { Radio, Tv, Shield } from 'lucide-react';
 
 export default function Login() {
@@ -9,17 +10,20 @@ export default function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [errorHint, setErrorHint] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setErrorHint('');
     setLoading(true);
     try {
       const user = await login(username, password);
       navigate(user.role === 'viewer' ? '/watch' : '/');
     } catch (err) {
-      setError(err.response?.data?.error || 'فشل تسجيل الدخول — تأكد أن السيرفر يعمل');
+      setError(getAuthErrorMessage(err, 'admin'));
+      setErrorHint(getAuthErrorHint(err, 'admin'));
     } finally {
       setLoading(false);
     }
@@ -59,7 +63,10 @@ export default function Login() {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
-                <div className="admin-alert admin-alert-error">{error}</div>
+                <div className="admin-alert admin-alert-error">
+                  <p>{error}</p>
+                  {errorHint && <p className="text-sm mt-2 opacity-90">{errorHint}</p>}
+                </div>
               )}
 
               <div>

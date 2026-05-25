@@ -1,19 +1,79 @@
 import * as authService from '../services/auth.service.js';
 import { touchOnlineUser } from '../services/online-presence.service.js';
 
+function loginError(reply, statusCode, error, reason) {
+  return reply.status(statusCode).send({ error, reason });
+}
+
 export default async function authRoutes(fastify) {
   fastify.post('/login', {
     config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
   }, async (request, reply) => {
-    const { username, password } = request.body;
+    const username = typeof request.body?.username === 'string' ? request.body.username.trim() : '';
+    const password = request.body?.password ?? '';
 
-    const user = await authService.findUserByUsername(username);
-    if (!user || !(await authService.verifyPassword(password, user.password_hash))) {
-      return reply.status(401).send({ error: 'Invalid credentials' });
+    if (!username || !password) {
+      return loginError(
+        reply,
+        400,
+        'يرجى إدخال اسم المستخدم وكلمة المرور',
+        'missing_fields'
+      );
+    }
+
+    if (username.length < 3 || username.length > 64) {
+      return loginError(
+        reply,
+        400,
+        'اسم المستخدم يجب أن يكون بين 3 و 64 حرفاً',
+        'invalid_username'
+      );
+    }
+
+    if (password.length < 6 || password.length > 128) {
+      return loginError(
+        reply,
+        400,
+        'كلمة المرور يجب أن تكون 6 أحرف على الأقل',
+        'invalid_password'
+      );
+    }
+
+    const user = await authService.findUserRecordByUsername(username);
+    if (!user) {
+      return loginError(
+        reply,
+        401,
+        'اسم المستخدم غير موجود — تحقق من الإملاء',
+        'user_not_found'
+      );
+    }
+
+    if (!user.is_active) {
+      return loginError(
+        reply,
+        403,
+        'هذا الحساب معطّل — تواصل مع المسؤول',
+        'account_disabled'
+      );
+    }
+
+    if (!(await authService.verifyPassword(password, user.password_hash))) {
+      return loginError(
+        reply,
+        401,
+        'كلمة المرور غير صحيحة — راجع بيانات التثبيت على السيرفر أو اطلب إعادة تعيينها',
+        'wrong_password'
+      );
     }
 
     if (user.expires_at && new Date(user.expires_at) < new Date()) {
-      return reply.status(403).send({ error: 'انتهت صلاحية الحساب — تواصل مع المسؤول' });
+      return loginError(
+        reply,
+        403,
+        'انتهت صلاحية الحساب — تواصل مع المسؤول',
+        'account_expired'
+      );
     }
 
     const accessToken = fastify.jwt.sign(

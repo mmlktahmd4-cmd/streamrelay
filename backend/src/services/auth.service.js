@@ -10,6 +10,14 @@ export async function findUserByUsername(username) {
   return result.rows[0] || null;
 }
 
+export async function findUserRecordByUsername(username) {
+  const result = await query(
+    'SELECT * FROM users WHERE username = $1',
+    [username]
+  );
+  return result.rows[0] || null;
+}
+
 export async function findUserById(id) {
   const result = await query('SELECT * FROM users WHERE id = $1', [id]);
   return result.rows[0] || null;

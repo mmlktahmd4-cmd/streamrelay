@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { getAuthErrorMessage } from '../../utils/authErrors';
 import { Tv, Shield } from 'lucide-react';
 
 export default function ViewerLogin() {
@@ -19,8 +20,7 @@ export default function ViewerLogin() {
       await login(username, password);
       navigate('/watch');
     } catch (err) {
-      const msg = err.response?.data?.error;
-      setError(msg || 'فشل تسجيل الدخول — تأكد من اسم المستخدم وكلمة المرور');
+      setError(getAuthErrorMessage(err, 'viewer'));
     } finally {
       setLoading(false);
     }
