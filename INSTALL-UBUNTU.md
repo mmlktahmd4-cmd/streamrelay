@@ -34,11 +34,11 @@ sudo bash scripts/ubuntu-quick-install.sh
 
 ---
 
-## التحديث
+## التحديث (بدون ضياع الميزات أو الإعدادات)
 
 ```bash
 cd /opt/streamrelay
-sudo bash scripts/update-from-github.sh
+sudo bash scripts/safe-update.sh
 ```
 
 ---

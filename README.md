@@ -45,7 +45,14 @@ sudo bash /opt/streamrelay/scripts/check-ports.sh
 
 ---
 
-## التحديث من GitHub
+## التحديث من GitHub (آمن — لا يضيع .env ولا القنوات)
+
+```bash
+cd /opt/streamrelay
+sudo bash scripts/safe-update.sh
+```
+
+أو:
 
 ```bash
 cd /opt/streamrelay
@@ -61,6 +68,7 @@ sudo bash scripts/update-from-github.sh
 | `scripts/easy-install.sh` | **التثبيت السهل** — clone + تثبيت كامل |
 | `scripts/ubuntu-quick-install.sh` | تثبيت كامل (Docker + .env + frontend) |
 | `scripts/install-from-github.sh` | استنساخ من GitHub ثم تثبيت |
+| `scripts/safe-update.sh` | **تحديث آمن** — git pull + بناء + يحافظ على الإعدادات |
 | `scripts/update-from-github.sh` | git pull + بناء + إعادة تشغيل |
 | `scripts/deploy-update.sh` | بناء frontend + إعادة تشغيل Docker |
 | `scripts/launch-production.sh` | إطلاق إنتاج (IP + بناء + Docker) |
