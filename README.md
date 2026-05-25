@@ -6,7 +6,7 @@
 
 ```bash
 sudo apt install -y git
-sudo git clone https://github.com/YOUR_USER/streamrelay.git /opt/streamrelay
+sudo git clone https://github.com/mmlktahmd4-cmd/streamrelay.git /opt/streamrelay
 cd /opt/streamrelay
 sudo bash scripts/ubuntu-quick-install.sh
 ```
@@ -14,10 +14,10 @@ sudo bash scripts/ubuntu-quick-install.sh
 أو بأمر واحد:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/YOUR_USER/streamrelay/main/scripts/install-from-github.sh | sudo bash -s -- https://github.com/YOUR_USER/streamrelay.git
+curl -fsSL https://raw.githubusercontent.com/mmlktahmd4-cmd/streamrelay/main/scripts/install-from-github.sh | sudo bash -s -- https://github.com/mmlktahmd4-cmd/streamrelay.git
 ```
 
-> استبدل `YOUR_USER/streamrelay` برابط مستودعك.
+> المستودع: https://github.com/mmlktahmd4-cmd/streamrelay
 
 ## بعد التثبيت
 

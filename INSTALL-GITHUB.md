@@ -19,7 +19,7 @@ git init
 git add .
 git commit -m "Initial commit — StreamRelay IPTV"
 git branch -M main
-git remote add origin https://github.com/YOUR_USERNAME/streamrelay.git
+git remote add origin https://github.com/mmlktahmd4-cmd/streamrelay.git
 git push -u origin main
 ```
 
@@ -38,17 +38,17 @@ git push -u origin main
 
 ## 3) التثبيت على Ubuntu 24 من GitHub
 
-### أمر واحد (بعد استبدال الرابط):
+### أمر واحد:
 
 ```bash
-sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/YOUR_USERNAME/streamrelay/main/scripts/install-from-github.sh)" -- https://github.com/YOUR_USERNAME/streamrelay.git
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/mmlktahmd4-cmd/streamrelay/main/scripts/install-from-github.sh)" -- https://github.com/mmlktahmd4-cmd/streamrelay.git
 ```
 
 ### أو خطوة بخطوة:
 
 ```bash
 sudo apt install -y git
-sudo git clone https://github.com/YOUR_USERNAME/streamrelay.git /opt/streamrelay
+sudo git clone https://github.com/mmlktahmd4-cmd/streamrelay.git /opt/streamrelay
 cd /opt/streamrelay
 sudo bash scripts/ubuntu-quick-install.sh
 ```
@@ -70,17 +70,14 @@ sudo bash scripts/update-from-github.sh
 
 ```bash
 # Token (HTTPS)
-sudo git clone https://TOKEN@github.com/YOUR_USERNAME/streamrelay.git /opt/streamrelay
+sudo git clone https://TOKEN@github.com/mmlktahmd4-cmd/streamrelay.git /opt/streamrelay
 
 # SSH
-sudo git clone git@github.com:YOUR_USERNAME/streamrelay.git /opt/streamrelay
+sudo git clone git@github.com:mmlktahmd4-cmd/streamrelay.git /opt/streamrelay
 ```
 
 ---
 
-## 6) استبدال الرابط في الملفات
+## 6) رابط المستودع
 
-بعد إنشاء المستودع، استبدل `YOUR_USERNAME/streamrelay` في:
-
-- `README.md`
-- هذا الملف
+https://github.com/mmlktahmd4-cmd/streamrelay

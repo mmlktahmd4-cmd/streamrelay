@@ -4,15 +4,15 @@
 
 ```bash
 sudo apt install -y git
-sudo git clone https://github.com/YOUR_USERNAME/streamrelay.git /opt/streamrelay
+sudo git clone https://github.com/mmlktahmd4-cmd/streamrelay.git /opt/streamrelay
 cd /opt/streamrelay
 sudo bash scripts/ubuntu-quick-install.sh
 ```
 
-أو **أمر واحد** (استبدل الرابط):
+أو **أمر واحد**:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/YOUR_USERNAME/streamrelay/main/scripts/install-from-github.sh | sudo bash -s -- https://github.com/YOUR_USERNAME/streamrelay.git
+curl -fsSL https://raw.githubusercontent.com/mmlktahmd4-cmd/streamrelay/main/scripts/install-from-github.sh | sudo bash -s -- https://github.com/mmlktahmd4-cmd/streamrelay.git
 ```
 
 **تحديث لاحقاً:**

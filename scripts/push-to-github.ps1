@@ -38,19 +38,19 @@ if ($status) {
 }
 
 Write-Host "إنشاء المستودع ورفع الكود..." -ForegroundColor Cyan
-gh repo create $RepoName --$Visibility --source=. --remote=origin --push --description "StreamRelay IPTV — HLS relay, admin dashboard, viewer portal"
+gh repo create $RepoName --$Visibility --source=. --remote=origin --push --description "StreamRelay IPTV - HLS relay, admin dashboard, viewer portal"
 
 if ($LASTEXITCODE -eq 0) {
   $url = gh repo view --json url -q .url
   Write-Host ""
-  Write-Host "تم الرفع بنجاح!" -ForegroundColor Green
+  Write-Host "Done! Repository published." -ForegroundColor Green
   Write-Host "  $url"
   Write-Host ""
-  Write-Host "التثبيت على Ubuntu:"
+  Write-Host "Ubuntu install:"
   Write-Host "  sudo git clone ${url}.git /opt/streamrelay"
   Write-Host "  cd /opt/streamrelay && sudo bash scripts/ubuntu-quick-install.sh"
 } else {
-  Write-Host "فشل الرفع — ربما المستودع موجود. جرّب:" -ForegroundColor Yellow
-  Write-Host "  git remote add origin https://github.com/YOUR_USER/$RepoName.git"
+  Write-Host "Push failed - repo may already exist. Try:" -ForegroundColor Yellow
+  Write-Host ('  git remote add origin https://github.com/YOUR_USER/' + $RepoName + '.git')
   Write-Host "  git push -u origin main"
 }
