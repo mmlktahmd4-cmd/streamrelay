@@ -1,0 +1,198 @@
+#!/bin/bash
+# ─────────────────────────────────────────────────────────────
+# StreamRelay — تثبيت سريع على Ubuntu 24.04 LTS
+# الاستخدام:  sudo bash scripts/ubuntu-quick-install.sh
+# ─────────────────────────────────────────────────────────────
+set -euo pipefail
+
+INSTALL_DIR="${INSTALL_DIR:-/opt/streamrelay}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SOURCE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+if [ "$EUID" -ne 0 ]; then
+  echo "شغّل السكربت كـ root:  sudo bash scripts/ubuntu-quick-install.sh"
+  exit 1
+fi
+
+echo "=============================================="
+echo "  StreamRelay — تثبيت Ubuntu 24"
+echo "=============================================="
+
+# ── 1. متطلبات النظام ──
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq
+apt-get install -y -qq curl ca-certificates gnupg openssl tar gzip rsync git
+
+if ! command -v docker &>/dev/null; then
+  echo "[1/6] تثبيت Docker..."
+  curl -fsSL https://get.docker.com | sh
+  systemctl enable docker
+  systemctl start docker
+else
+  echo "[1/6] Docker موجود ✓"
+fi
+
+if ! docker compose version &>/dev/null; then
+  apt-get install -y -qq docker-compose-plugin
+fi
+
+# ── 2. نسخ المشروع ──
+echo "[2/6] تجهيز $INSTALL_DIR ..."
+mkdir -p "$INSTALL_DIR"
+
+if [ "$SOURCE_DIR" != "$INSTALL_DIR" ]; then
+  rsync -a --delete \
+    --exclude node_modules \
+    --exclude backend/node_modules \
+    --exclude frontend/node_modules \
+    --exclude frontend/dist \
+    --exclude .git \
+    --exclude data/hls \
+    --exclude data/logs \
+    "$SOURCE_DIR/" "$INSTALL_DIR/"
+fi
+
+cd "$INSTALL_DIR"
+chmod +x scripts/*.sh 2>/dev/null || true
+
+# ── 3. ملف البيئة ──
+echo "[3/6] إعداد .env ..."
+SERVER_IP="$(hostname -I | awk '{print $1}')"
+JWT_SECRET="$(openssl rand -hex 32)"
+JWT_REFRESH="$(openssl rand -hex 32)"
+URL_SIGNING="$(openssl rand -hex 32)"
+DB_PASS="$(openssl rand -hex 16)"
+ADMIN_PASS="${ADMIN_PASSWORD:-$(openssl rand -base64 12 | tr -d '/+=' | head -c 12)}"
+
+if [ ! -f .env ]; then
+  cat > .env <<EOF
+NODE_ENV=production
+API_PORT=3000
+API_HOST=0.0.0.0
+SERVER_ID=node-1
+SERVER_ROLE=full
+
+JWT_SECRET=${JWT_SECRET}
+JWT_REFRESH_SECRET=${JWT_REFRESH}
+JWT_ACCESS_EXPIRY=15m
+JWT_REFRESH_EXPIRY=7d
+URL_SIGNING_SECRET=${URL_SIGNING}
+SIGNED_URL_TTL=3600
+
+POSTGRES_HOST=postgres
+POSTGRES_PORT=5432
+POSTGRES_DB=streamrelay
+POSTGRES_USER=streamrelay
+POSTGRES_PASSWORD=${DB_PASS}
+
+REDIS_HOST=redis
+REDIS_PORT=6379
+REDIS_PASSWORD=
+
+HLS_OUTPUT_DIR=/var/www/hls
+VOD_DIR=/var/www/vod
+MPEGTS_OUTPUT_DIR=/var/www/mpegts
+FFMPEG_PATH=/usr/bin/ffmpeg
+MAX_CONCURRENT_STREAMS=200
+HEALTH_CHECK_INTERVAL=5
+MAX_RESTART_ATTEMPTS=0
+RESTART_COOLDOWN=2
+
+PUBLIC_BASE_URL=http://${SERVER_IP}
+RTMP_INGEST_URL=rtmp://${SERVER_IP}:1935/live
+HLS_BASE_URL=http://${SERVER_IP}/hls
+ALLOWED_ORIGINS=http://${SERVER_IP},http://${SERVER_IP}:5173,http://localhost
+
+RATE_LIMIT_MAX=300
+RATE_LIMIT_WINDOW_MS=60000
+STREAM_RATE_LIMIT_MAX=30
+
+LOG_LEVEL=info
+LOG_DIR=/var/log/streamrelay
+
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=${ADMIN_PASS}
+ADMIN_EMAIL=admin@localhost
+EOF
+  echo "      تم إنشاء .env جديد"
+else
+  echo "      .env موجود — لم يُستبدَل"
+  ADMIN_PASS="$(grep '^ADMIN_PASSWORD=' .env | cut -d= -f2- || echo 'admin123')"
+  SERVER_IP="$(grep '^PUBLIC_BASE_URL=' .env | sed 's|PUBLIC_BASE_URL=http://||' | cut -d/ -f1 || hostname -I | awk '{print $1}')"
+fi
+
+mkdir -p nginx/ssl data/hls data/vod data/logs
+
+# ── 4. بناء وتشغيل Docker ──
+echo "[4/6] بناء الحاويات (قد يستغرق 5–15 دقيقة)..."
+docker compose pull postgres redis nginx 2>/dev/null || true
+docker compose build --parallel
+docker compose up -d
+
+# ── 5. انتظار جاهزية API ──
+echo "[5/6] انتظار تشغيل السيرفر..."
+for i in $(seq 1 60); do
+  if curl -sf "http://127.0.0.1:3000/api/health" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 3
+  if [ "$i" -eq 60 ]; then
+    echo "تحذير: API لم يستجب بعد — تحقق: docker compose logs api"
+  fi
+done
+
+# ── 6. systemd (تشغيل تلقائي بعد إعادة التشغيل) ──
+echo "[6/6] تفعيل التشغيل التلقائي..."
+cat > /etc/systemd/system/streamrelay.service <<UNIT
+[Unit]
+Description=StreamRelay IPTV (Docker Compose)
+Requires=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=${INSTALL_DIR}
+ExecStart=/usr/bin/docker compose up -d
+ExecStop=/usr/bin/docker compose down
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+systemctl daemon-reload
+systemctl enable streamrelay.service
+
+# ── MikroTik IP hint ──
+echo ""
+echo "=============================================="
+echo "  تم التثبيت بنجاح!"
+echo "=============================================="
+echo ""
+echo "  لوحة الإدارة:    http://${SERVER_IP}/login"
+echo "  بوابة المشاهدة:  http://${SERVER_IP}/watch/login"
+echo "  API:             http://${SERVER_IP}/api/health"
+echo ""
+echo "  المستخدم:  admin"
+echo "  كلمة المرور: ${ADMIN_PASS}"
+echo ""
+echo "  (محفوظة في ${INSTALL_DIR}/.env)"
+echo ""
+echo "  أوامر مفيدة:"
+echo "    cd ${INSTALL_DIR}"
+echo "    docker compose ps          # حالة الخدمات"
+echo "    docker compose logs -f api # سجل السيرفر"
+echo "    docker compose restart     # إعادة تشغيل"
+echo ""
+echo "  في صفحة MikroTik اكتب IP السيرفر: ${SERVER_IP}"
+echo "=============================================="
+
+# حفظ بيانات الدخول
+cat > "${INSTALL_DIR}/INSTALL-CREDENTIALS.txt" <<CRED
+StreamRelay — بيانات التثبيت
+التاريخ: $(date -Iseconds)
+العنوان: http://${SERVER_IP}
+admin / ${ADMIN_PASS}
+CRED
+chmod 600 "${INSTALL_DIR}/INSTALL-CREDENTIALS.txt"

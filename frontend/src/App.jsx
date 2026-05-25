@@ -1,0 +1,80 @@
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { useAuth } from './context/AuthContext';
+import Layout from './components/Layout';
+import ViewerLayout from './components/viewer/ViewerLayout';
+import Login from './pages/Login';
+import ViewerLogin from './pages/viewer/ViewerLogin';
+import ViewerHome from './pages/viewer/ViewerHome';
+import ViewerWatch from './pages/viewer/ViewerWatch';
+import Dashboard from './pages/Dashboard';
+import Channels from './pages/Channels';
+import ChannelForm from './pages/ChannelForm';
+import Player from './pages/Player';
+import Users from './pages/Users';
+import Mikrotik from './pages/Mikrotik';
+import Categories from './pages/Categories';
+import Logs from './pages/Logs';
+import LoadingSpinner from './components/ui/LoadingSpinner';
+
+function AdminRoute({ children, minRole }) {
+  const { user, loading } = useAuth();
+  if (loading) return <LoadingSpinner className="min-h-screen" />;
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.role === 'viewer') return <Navigate to="/watch" replace />;
+  if (minRole === 'admin' && user.role !== 'admin') return <Navigate to="/" replace />;
+  if (minRole === 'operator' && !['admin', 'operator'].includes(user.role)) return <Navigate to="/" replace />;
+  return children;
+}
+
+function ViewerRoute({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return <LoadingSpinner className="min-h-screen" />;
+  if (!user) return <Navigate to="/watch/login" replace />;
+  return children;
+}
+
+function GuestAdmin({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return <LoadingSpinner className="min-h-screen" />;
+  if (user) {
+    if (user.role === 'viewer') return <Navigate to="/watch" replace />;
+    return <Navigate to="/" replace />;
+  }
+  return children;
+}
+
+function GuestViewer({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return <LoadingSpinner className="min-h-screen" />;
+  if (user) return <Navigate to="/watch" replace />;
+  return children;
+}
+
+export default function App() {
+  return (
+    <Routes>
+      {/* بوابة المشاهدة — منفصلة عن الإدارة */}
+      <Route path="/watch/login" element={<GuestViewer><ViewerLogin /></GuestViewer>} />
+      <Route path="/watch" element={<ViewerRoute><ViewerLayout /></ViewerRoute>}>
+        <Route index element={<ViewerHome />} />
+        <Route path="live/:id" element={<ViewerWatch />} />
+      </Route>
+
+      {/* لوحة الإدارة */}
+      <Route path="/login" element={<GuestAdmin><Login /></GuestAdmin>} />
+      <Route path="/" element={<AdminRoute><Layout /></AdminRoute>}>
+        <Route index element={<Dashboard />} />
+        <Route path="channels" element={<Channels />} />
+        <Route path="categories" element={<AdminRoute minRole="operator"><Categories /></AdminRoute>} />
+        <Route path="channels/new" element={<AdminRoute minRole="operator"><ChannelForm /></AdminRoute>} />
+        <Route path="channels/:id/edit" element={<AdminRoute minRole="operator"><ChannelForm /></AdminRoute>} />
+        <Route path="player/:id" element={<Player />} />
+        <Route path="users" element={<AdminRoute minRole="admin"><Users /></AdminRoute>} />
+        <Route path="mikrotik" element={<AdminRoute minRole="admin"><Mikrotik /></AdminRoute>} />
+        <Route path="logs" element={<Logs />} />
+      </Route>
+
+      <Route path="*" element={<Navigate to="/watch/login" replace />} />
+    </Routes>
+  );
+}

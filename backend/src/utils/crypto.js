@@ -1,0 +1,58 @@
+import crypto from 'crypto';
+import { config } from '../config/index.js';
+import { getPublicUrls } from '../services/public-url.service.js';
+
+export function generateSignedUrl(channelSlug, expiresIn = null) {
+  const ttl = expiresIn || config.urlSigning.ttl;
+  const expires = Math.floor(Date.now() / 1000) + ttl;
+  const payload = `${channelSlug}:${expires}`;
+  const signature = crypto
+    .createHmac('sha256', config.urlSigning.secret)
+    .update(payload)
+    .digest('hex');
+
+  const { hlsBase } = getPublicUrls();
+  const pathSlug = encodeURIComponent(channelSlug);
+  return {
+    url: `${hlsBase}/${pathSlug}/index.m3u8?expires=${expires}&sig=${signature}`,
+    expires,
+    signature,
+  };
+}
+
+export function verifySignedUrl(channelSlug, expires, signature) {
+  if (!expires || !signature) return false;
+
+  const now = Math.floor(Date.now() / 1000);
+  if (parseInt(expires, 10) < now) return false;
+
+  const payload = `${channelSlug}:${expires}`;
+  const expected = crypto
+    .createHmac('sha256', config.urlSigning.secret)
+    .update(payload)
+    .digest('hex');
+
+  return crypto.timingSafeEqual(
+    Buffer.from(signature, 'hex'),
+    Buffer.from(expected, 'hex')
+  );
+}
+
+export function generateApiToken() {
+  const token = `sr_${crypto.randomBytes(32).toString('hex')}`;
+  const prefix = token.substring(0, 8);
+  const hash = crypto.createHash('sha256').update(token).digest('hex');
+  return { token, prefix, hash };
+}
+
+export function hashToken(token) {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+export function generateSlug(name) {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9\u0600-\u06FF]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .substring(0, 128) || `channel-${Date.now()}`;
+}

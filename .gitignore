@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+dist/
+build/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Docker volumes
+postgres_data/
+redis_data/
+hls_data/
+
+# SSL
+nginx/ssl/*.pem
+nginx/ssl/*.key
+!nginx/ssl/.gitkeep
+
+# Stream output & runtime data
+data/hls/
+data/logs/
+data/vod/
+data/mpegts/
+
+# Deploy artifacts
+*.tar.gz
+streamrelay-ubuntu24.tar.gz
+INSTALL-CREDENTIALS.txt
+
+# Build
+frontend/dist/

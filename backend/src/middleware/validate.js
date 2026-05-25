@@ -1,0 +1,128 @@
+import { z } from 'zod';
+
+const optionalEmail = z.preprocess(
+  (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+  z.string().email().optional()
+);
+
+const optionalString = z.preprocess(
+  (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+  z.string().optional()
+);
+
+const optionalUrl = z.preprocess(
+  (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+  z.string().url().optional()
+);
+
+export const loginSchema = z.object({
+  username: z.string().min(3).max(64),
+  password: z.string().min(6).max(128),
+});
+
+const expiresAtField = z.preprocess(
+  (v) => {
+    if (v === null || v === undefined || v === '') return undefined;
+    const d = new Date(v);
+    return Number.isNaN(d.getTime()) ? v : d.toISOString();
+  },
+  z.string().datetime().optional()
+);
+
+export const createUserSchema = z.object({
+  username: z.string().min(3).max(64).regex(/^[a-zA-Z0-9_-]+$/),
+  password: z.string().min(6).max(128),
+  role: z.enum(['admin', 'operator', 'viewer']).default('viewer'),
+  max_connections: z.number().int().min(1).max(100).default(1),
+  expires_at: expiresAtField,
+}).superRefine((data, ctx) => {
+  if (data.role === 'viewer' && !data.expires_at) {
+    ctx.addIssue({ code: 'custom', message: 'تاريخ الانتهاء مطلوب للمشاهدين', path: ['expires_at'] });
+  }
+});
+
+export const updateUserSchema = z.object({
+  password: z.string().min(6).max(128).optional(),
+  role: z.enum(['admin', 'operator', 'viewer']).optional(),
+  is_active: z.boolean().optional(),
+  max_connections: z.number().int().min(1).max(100).optional(),
+  expires_at: expiresAtField.nullable(),
+});
+
+export const createChannelSchema = z.object({
+  name: z.string().min(1).max(255),
+  slug: z.string().min(1).max(255).optional(),
+  description: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().max(1000).optional()
+  ),
+  logo_url: optionalUrl,
+  category_id: z.string().uuid().optional(),
+  source_type: z.enum(['m3u', 'hls', 'rtmp', 'udp', 'http']).default('hls'),
+  source_url: z.string().min(1),
+  backup_source_url: optionalString,
+  output_format: z.enum(['hls', 'mpegts', 'rtmp', 'relay']).default('hls'),
+  transcode_enabled: z.boolean().default(false),
+  transcode_profile: z.object({
+    video_codec: z.string().default('copy'),
+    audio_codec: z.string().default('copy'),
+    preset: z.string().optional(),
+    video_bitrate: z.string().optional(),
+  }).optional(),
+  auto_restart: z.boolean().default(true),
+  epg_id: z.string().optional(),
+  sort_order: z.number().int().default(0),
+  is_public: z.boolean().default(false),
+});
+
+export const updateChannelSchema = createChannelSchema.partial();
+
+export const createTokenSchema = z.object({
+  name: z.string().min(1).max(128),
+  scopes: z.array(z.string()).default([]),
+  expires_at: z.string().datetime().optional(),
+});
+
+export const importM3USchema = z.object({
+  content: z.string().min(1),
+  category_id: z.string().uuid().optional(),
+  is_public: z.boolean().default(true),
+});
+
+export const paginationSchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+export const mikrotikConfigSchema = z.object({
+  server_ip: z.string().min(7).max(45),
+});
+
+export const ipRuleSchema = z.object({
+  ip_address: z.string().min(3).max(64),
+  rule_type: z.enum(['allow', 'deny']),
+  description: z.string().max(255).optional(),
+});
+
+export const createCategorySchema = z.object({
+  name: z.string().min(1).max(128),
+  description: z.string().max(500).optional(),
+  section_type: z.enum(['mixed', 'live', 'movies']).default('mixed'),
+  sort_order: z.number().int().default(0),
+});
+
+export const updateCategorySchema = createCategorySchema.partial();
+
+export function validate(schema) {
+  return async (request, reply) => {
+    const result = schema.safeParse(request.body ?? request.query);
+    if (!result.success) {
+      return reply.status(400).send({
+        error: 'Validation failed',
+        details: result.error.flatten().fieldErrors,
+      });
+    }
+    if (request.body !== undefined) request.body = result.data;
+    else request.query = result.data;
+  };
+}

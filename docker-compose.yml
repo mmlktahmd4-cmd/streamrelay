@@ -1,0 +1,140 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: sr-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-streamrelay}
+      POSTGRES_USER: ${POSTGRES_USER:-streamrelay}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-streamrelay_secret}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-streamrelay}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - streamrelay
+
+  redis:
+    image: redis:7-alpine
+    container_name: sr-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes ${REDIS_PASSWORD:+--requirepass $REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - streamrelay
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sr-api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+    volumes:
+      - hls_data:/var/www/hls
+      - mpegts_data:/var/www/mpegts
+      - vod_data:/var/www/vod
+      - logs_data:/var/log/streamrelay
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - streamrelay
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sr-worker
+    restart: unless-stopped
+    command: ["node", "src/worker.js"]
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+    volumes:
+      - hls_data:/var/www/hls
+      - mpegts_data:/var/www/mpegts
+      - vod_data:/var/www/vod
+      - logs_data:/var/log/streamrelay
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - streamrelay
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: /api
+    container_name: sr-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
+    networks:
+      - streamrelay
+
+  nginx:
+    image: tiangolo/nginx-rtmp
+    container_name: sr-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "1935:1935"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - hls_data:/var/www/hls:ro
+      - mpegts_data:/var/www/mpegts:ro
+      - vod_data:/var/www/vod:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - api
+      - frontend
+    networks:
+      - streamrelay
+
+volumes:
+  postgres_data:
+  redis_data:
+  hls_data:
+  mpegts_data:
+  vod_data:
+  logs_data:
+
+networks:
+  streamrelay:
+    driver: bridge
