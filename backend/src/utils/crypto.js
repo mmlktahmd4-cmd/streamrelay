@@ -13,8 +13,11 @@ export function generateSignedUrl(channelSlug, expiresIn = null) {
 
   const { hlsBase } = getPublicUrls();
   const pathSlug = encodeURIComponent(channelSlug);
+  const query = `expires=${expires}&sig=${signature}`;
+  const internalUrl = `${hlsBase}/${pathSlug}/index.m3u8?${query}`;
+
   return {
-    url: `${hlsBase}/${pathSlug}/index.m3u8?expires=${expires}&sig=${signature}`,
+    url: internalUrl,
     expires,
     signature,
   };

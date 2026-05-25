@@ -43,7 +43,10 @@ export function requireRole(...roles) {
       return reply.status(401).send({ error: 'Authentication required' });
     }
     if (!roles.includes(request.user.role)) {
-      return reply.status(403).send({ error: 'Insufficient permissions' });
+      return reply.status(403).send({
+        error: 'صلاحيات غير كافية — يلزم حساب مدير أو مشغّل',
+        reason: 'insufficient_role',
+      });
     }
   };
 }
@@ -56,7 +59,10 @@ export function requireMinRole(minRole) {
     const userLevel = ROLE_HIERARCHY[request.user.role] || 0;
     const requiredLevel = ROLE_HIERARCHY[minRole] || 0;
     if (userLevel < requiredLevel) {
-      return reply.status(403).send({ error: 'Insufficient permissions' });
+      return reply.status(403).send({
+        error: 'صلاحيات غير كافية — يلزم حساب مدير أو مشغّل',
+        reason: 'insufficient_role',
+      });
     }
   };
 }

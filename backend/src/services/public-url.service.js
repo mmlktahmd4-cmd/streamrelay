@@ -1,69 +1,125 @@
-import os from 'os';
 import path from 'path';
 import { query } from '../db/pool.js';
 import { config } from '../config/index.js';
 import { createChildLogger } from '../utils/logger.js';
+import {
+  detectPhysicalLanIp,
+  ipInSubnet,
+  isDockerBridgeIp,
+  isRunningInContainer,
+  resolveHomeSubnet,
+} from '../utils/network-ip.js';
 
 const log = createChildLogger('public-url');
 
 let cache = null;
+let lastWatchedIp = null;
+let watchTimer = null;
 
-function detectLanIp() {
-  const entries = [];
-  for (const [name, interfaces] of Object.entries(os.networkInterfaces())) {
-    for (const net of interfaces || []) {
-      if (net.family !== 'IPv4' || net.internal) continue;
-      entries.push({ address: net.address, name });
-    }
+function parseEnvPublicBase() {
+  const configured = process.env.PUBLIC_BASE_URL?.trim();
+  if (!configured || configured.includes('localhost') || configured.includes('127.0.0.1')) {
+    return null;
   }
-  if (entries.length === 0) return '127.0.0.1';
 
-  const isPrivate = (ip) =>
-    ip.startsWith('192.168.')
-    || ip.startsWith('10.')
-    || /^172\.(1[6-9]|2\d|3[01])\./.test(ip);
+  try {
+    const url = new URL(configured);
+    const defaultPort = url.protocol === 'https:' ? 443 : 80;
+    const explicitPort = url.port ? parseInt(url.port, 10) : null;
+    const envHttpPort = parseInt(process.env.STREAMRELAY_HTTP_PORT || '', 10);
+    const port = explicitPort
+      || (Number.isFinite(envHttpPort) && envHttpPort > 0 ? envHttpPort : defaultPort);
 
-  const score = (entry) => {
-    let s = 0;
-    const ip = entry.address;
-    if (ip.startsWith('192.168.')) s += 100;
-    else if (ip.startsWith('10.')) s += 10;
-    const lower = entry.name.toLowerCase();
-    if (lower.includes('wi-fi') || lower.includes('wifi') || lower.includes('wireless')) s += 20;
-    if (lower.includes('ethernet') && !lower.includes('2')) s += 15;
-    if (lower.includes('vpn') || lower.includes('tap') || lower.includes('tun')) s -= 50;
-    return s;
+    return {
+      hostname: url.hostname,
+      port,
+      protocol: url.protocol.replace(':', ''),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function getHomeSubnet(mikrotik) {
+  const publicBase = parseEnvPublicBase();
+  return resolveHomeSubnet({
+    envSubnet: process.env.SERVER_LAN_SUBNET,
+    serverIp: process.env.SERVER_IP,
+    publicHostname: publicBase?.hostname,
+    mikrotikSubnet: mikrotik.client_subnet,
+    mikrotikServerIp: mikrotik.server_ip,
+  });
+}
+
+function acceptPinnedIp(ip, homeSubnet) {
+  const value = String(ip || '').trim();
+  if (!value) return null;
+  if (isDockerBridgeIp(value)) return null;
+  if (homeSubnet && !ipInSubnet(value, homeSubnet)) return null;
+  return value;
+}
+
+function readEnvServerIp() {
+  const direct = process.env.SERVER_IP?.trim();
+  if (direct) return direct;
+
+  const configured = process.env.PUBLIC_BASE_URL?.trim();
+  if (!configured || configured.includes('localhost') || configured.includes('127.0.0.1')) {
+    return null;
+  }
+
+  try {
+    return new URL(configured).hostname;
+  } catch {
+    return null;
+  }
+}
+
+function resolveServerIp(mikrotik) {
+  const homeSubnet = getHomeSubnet(mikrotik);
+  const publicBase = parseEnvPublicBase();
+
+  const envIp = acceptPinnedIp(process.env.SERVER_IP, homeSubnet);
+  if (envIp) return { ip: envIp, source: 'env', homeSubnet };
+
+  const publicIp = acceptPinnedIp(publicBase?.hostname, homeSubnet);
+  if (publicIp) return { ip: publicIp, source: 'public_base_url', homeSubnet };
+
+  const mikrotikIp = acceptPinnedIp(mikrotik.server_ip, homeSubnet);
+  if (mikrotikIp) return { ip: mikrotikIp, source: 'mikrotik', homeSubnet };
+
+  // داخل Docker لا يوجد IP LAN حقيقي — لا نستخدم 172.18.x أبداً
+  if (isRunningInContainer()) {
+    const forced = acceptPinnedIp(readEnvServerIp(), homeSubnet);
+    if (forced) return { ip: forced, source: 'env', homeSubnet };
+
+    log.error('SERVER_IP or PUBLIC_BASE_URL must be set — Docker cannot auto-detect LAN IP');
+    return { ip: '127.0.0.1', source: 'env', homeSubnet };
+  }
+
+  return {
+    ip: detectPhysicalLanIp(homeSubnet),
+    source: 'auto',
+    homeSubnet,
   };
-
-  const candidates = entries
-    .filter((e) => isPrivate(e.address))
-    .sort((a, b) => score(b) - score(a));
-
-  return candidates[0]?.address || entries[0].address;
 }
 
-function isLocalIp(ip) {
-  const target = String(ip || '').trim();
-  if (!target) return false;
-  for (const interfaces of Object.values(os.networkInterfaces())) {
-    for (const net of interfaces || []) {
-      if (net.family === 'IPv4' && net.address === target) return true;
-    }
-  }
-  return false;
+function resolveWebPort(mikrotik) {
+  const publicBase = parseEnvPublicBase();
+  if (publicBase?.port) return publicBase.port;
+
+  const envHttpPort = parseInt(process.env.STREAMRELAY_HTTP_PORT || '', 10);
+  if (Number.isFinite(envHttpPort) && envHttpPort > 0) return envHttpPort;
+
+  if (mikrotik.web_port) return mikrotik.web_port;
+
+  return 5173;
 }
 
-function parsePortFromEnvUrl(envValue, fallback) {
-  const configured = envValue?.trim();
-  if (configured && !configured.includes('localhost') && !configured.includes('127.0.0.1')) {
-    try {
-      const u = new URL(configured);
-      if (u.port) return parseInt(u.port, 10);
-      return u.protocol === 'https:' ? 443 : fallback;
-    } catch { /* ignore */ }
-  }
-  const portMatch = configured?.match(/:(\d+)/);
-  return portMatch ? parseInt(portMatch[1], 10) : fallback;
+function buildBaseUrl(serverIp, webPort, protocol = 'http') {
+  const defaultPort = protocol === 'https' ? 443 : 80;
+  if (webPort === defaultPort) return `${protocol}://${serverIp}`;
+  return `${protocol}://${serverIp}:${webPort}`;
 }
 
 async function loadMikrotikSettings() {
@@ -76,25 +132,18 @@ async function loadMikrotikSettings() {
 }
 
 function buildCache(mikrotik) {
-  const detectedIp = detectLanIp();
-  const configuredIp = mikrotik.server_ip?.trim();
-  let serverIp = configuredIp || detectedIp;
-  let source = configuredIp ? 'mikrotik' : 'auto';
-
-  if (configuredIp && !isLocalIp(configuredIp)) {
-    log.warn({ configuredIp, detectedIp }, 'MikroTik IP not on this device — using laptop IP');
-    serverIp = detectedIp;
-    source = 'auto';
-  }
-
-  const webPort = mikrotik.web_port || parsePortFromEnvUrl(process.env.PUBLIC_BASE_URL, 5173);
+  const homeSubnet = getHomeSubnet(mikrotik);
+  const detectedIp = detectPhysicalLanIp(homeSubnet);
+  const { ip: serverIp, source } = resolveServerIp(mikrotik);
+  const webPort = resolveWebPort(mikrotik);
   const apiPort = mikrotik.api_port || config.port;
-  const baseUrl = `http://${serverIp}:${webPort}`;
-  const hlsBase = `${baseUrl}/hls`;
+  const baseUrl = buildBaseUrl(serverIp, webPort);
+  const hlsBase = `${baseUrl}/api/hls`;
 
   return {
     serverIp,
     detectedIp,
+    homeSubnet,
     webPort,
     apiPort,
     baseUrl,
@@ -107,7 +156,9 @@ function buildCache(mikrotik) {
 
 export async function refreshPublicUrlCache({ syncUrls = true } = {}) {
   const mikrotik = await loadMikrotikSettings();
+  const previousIp = cache?.serverIp;
   cache = buildCache(mikrotik);
+  lastWatchedIp = cache.serverIp;
 
   if (syncUrls) {
     await syncMediaOutputUrls();
@@ -115,8 +166,11 @@ export async function refreshPublicUrlCache({ syncUrls = true } = {}) {
 
   log.info({
     serverIp: cache.serverIp,
+    detectedIp: cache.detectedIp,
+    homeSubnet: cache.homeSubnet,
     baseUrl: cache.baseUrl,
     source: cache.source,
+    changed: previousIp && previousIp !== cache.serverIp,
   }, 'Public URLs updated');
 
   return cache;
@@ -194,4 +248,40 @@ export async function syncMediaOutputUrls() {
   }
 
   log.info({ hlsBase, baseUrl }, 'Synced channel/movie output URLs');
+}
+
+async function watchNetworkChange() {
+  const urls = getPublicUrls();
+  const mikrotik = await loadMikrotikSettings();
+  const next = buildCache(mikrotik);
+
+  if (next.serverIp === urls.serverIp && next.baseUrl === urls.baseUrl) {
+    lastWatchedIp = next.serverIp;
+    return;
+  }
+
+  log.info({
+    from: urls.serverIp,
+    to: next.serverIp,
+    homeSubnet: next.homeSubnet,
+  }, 'LAN IP changed — refreshing channel URLs');
+
+  lastWatchedIp = next.serverIp;
+  await refreshPublicUrlCache({ syncUrls: true });
+}
+
+export function startNetworkWatcher() {
+  if (watchTimer) return;
+
+  const intervalMs = parseInt(process.env.NETWORK_WATCH_INTERVAL_MS || '30000', 10);
+  if (!Number.isFinite(intervalMs) || intervalMs <= 0) return;
+
+  watchTimer = setInterval(() => {
+    watchNetworkChange().catch((err) => {
+      log.warn({ err: err.message }, 'Network watch tick failed');
+    });
+  }, intervalMs);
+  watchTimer.unref();
+
+  log.info({ intervalMs }, 'Network watcher started');
 }

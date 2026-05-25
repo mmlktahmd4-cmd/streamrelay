@@ -50,10 +50,9 @@ function ViewerRoute({ children }) {
 function GuestViewer({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <LoadingSpinner className="min-h-screen" />;
-  if (user) {
-    if (user.role === 'viewer') return <Navigate to="/watch" replace />;
-    return <Navigate to="/" replace />;
-  }
+  // مشاهد مسجل — يذهب للقنوات
+  if (user?.role === 'viewer') return <Navigate to="/watch" replace />;
+  // مدير/مشغّل — يظهر صفحة دخول المشاهدة (لا يُحوَّل للإدارة)
   return children;
 }
 

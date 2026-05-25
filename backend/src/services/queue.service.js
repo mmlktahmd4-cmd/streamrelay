@@ -102,7 +102,7 @@ export async function setupQueueProcessors() {
   log.info('Queue processors registered');
 }
 
-export async function runStreamJob(name, data, timeoutMs = 180000) {
+export async function runStreamJob(name, data, timeoutMs = 60000) {
   const queue = getQueue();
   const job = await queue.add(name, data, {
     removeOnComplete: true,
@@ -113,7 +113,11 @@ export async function runStreamJob(name, data, timeoutMs = 180000) {
   try {
     return await job.finished();
   } catch (err) {
-    throw new Error(err?.message || `Stream job ${name} failed`);
+    const msg = err?.message || '';
+    if (msg.includes('timed out') || msg.includes('Timeout')) {
+      throw new Error('انتهت مهلة تشغيل القناة — تحقق أن خدمة worker تعمل أو أعد تشغيل السيرفر');
+    }
+    throw new Error(msg || `Stream job ${name} failed`);
   }
 }
 

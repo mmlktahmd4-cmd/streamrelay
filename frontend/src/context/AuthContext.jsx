@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { login as apiLogin, getMe, pingPresence } from '../api/client';
-import { clearAuthStorage, isAdminLoginPage, setAuthPortal } from '../utils/authStorage';
+import { clearAuthStorage, isAdminLoginPage, isViewerLoginPage, setAuthPortal } from '../utils/authStorage';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 const AuthContext = createContext(null);
@@ -21,8 +21,11 @@ export function AuthProvider({ children }) {
 
   const loadUser = useCallback(async () => {
     const onAdminLogin = isAdminLoginPage();
+    const onViewerLogin = isViewerLoginPage();
     if (onAdminLogin) {
       setAuthPortal('admin');
+    } else if (onViewerLogin) {
+      setAuthPortal('viewer');
     }
 
     const token = localStorage.getItem('access_token');
@@ -41,7 +44,7 @@ export function AuthProvider({ children }) {
         return;
       }
       setUser(data);
-      if (!onAdminLogin) {
+      if (!onAdminLogin && !onViewerLogin) {
         setAuthPortal(data.role);
       }
     } catch {
@@ -55,7 +58,7 @@ export function AuthProvider({ children }) {
             return;
           }
           setUser(data);
-          if (!onAdminLogin) {
+          if (!onAdminLogin && !onViewerLogin) {
             setAuthPortal(data.role);
           }
           return;

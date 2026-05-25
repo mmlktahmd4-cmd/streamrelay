@@ -4,6 +4,10 @@ export function isAdminLoginPage(pathname = window.location.pathname) {
   return pathname === '/login' || pathname === '/admin/login';
 }
 
+export function isViewerLoginPage(pathname = window.location.pathname) {
+  return pathname === '/watch/login';
+}
+
 export function setAuthPortal(role) {
   localStorage.setItem(PORTAL_KEY, role === 'viewer' ? 'viewer' : 'admin');
 }

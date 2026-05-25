@@ -45,3 +45,4 @@ INSTALL-CREDENTIALS.txt
 
 # Build
 frontend/dist/
+backend/src/public/

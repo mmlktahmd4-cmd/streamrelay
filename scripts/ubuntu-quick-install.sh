@@ -77,12 +77,12 @@ apt-get update -qq
 apt-get install -y -qq curl ca-certificates gnupg openssl tar gzip rsync git iproute2
 
 if ! command -v docker &>/dev/null; then
-  echo "[1/6] تثبيت Docker..."
+  echo "[1/7] تثبيت Docker..."
   curl -fsSL https://get.docker.com | sh
   systemctl enable docker
   systemctl start docker
 else
-  echo "[1/6] Docker موجود ✓"
+  echo "[1/7] Docker موجود ✓"
 fi
 
 if ! docker compose version &>/dev/null; then
@@ -90,7 +90,7 @@ if ! docker compose version &>/dev/null; then
 fi
 
 # ── 2. نسخ المشروع ──
-echo "[2/6] تجهيز $INSTALL_DIR ..."
+echo "[2/7] تجهيز $INSTALL_DIR ..."
 mkdir -p "$INSTALL_DIR"
 
 if [ "$SOURCE_DIR" != "$INSTALL_DIR" ]; then
@@ -109,8 +109,11 @@ cd "$INSTALL_DIR"
 chmod +x scripts/*.sh 2>/dev/null || true
 
 # ── 3. ملف البيئة ──
-echo "[3/6] إعداد .env ..."
-SERVER_IP="$(hostname -I | awk '{print $1}')"
+echo "[3/7] إعداد .env ..."
+SERVER_IP="$(hostname -I | tr ' ' '\n' | grep '^192\.168\.' | head -1)"
+SERVER_IP="${SERVER_IP:-$(hostname -I | tr ' ' '\n' | grep -v '^172\.' | head -1)}"
+SERVER_IP="${SERVER_IP:-$(hostname -I | awk '{print $1}')}"
+SERVER_LAN_SUBNET="$(echo "$SERVER_IP" | awk -F. '{print $1"."$2"."$3".0/24}')"
 JWT_SECRET="$(openssl rand -hex 32)"
 JWT_REFRESH="$(openssl rand -hex 32)"
 URL_SIGNING="$(openssl rand -hex 32)"
@@ -153,6 +156,8 @@ MAX_RESTART_ATTEMPTS=0
 RESTART_COOLDOWN=2
 
 STREAMRELAY_HTTP_PORT=${HTTP_PORT}
+SERVER_IP=${SERVER_IP}
+SERVER_LAN_SUBNET=${SERVER_LAN_SUBNET}
 PUBLIC_BASE_URL=${BASE_URL}
 RTMP_INGEST_URL=rtmp://${SERVER_IP}:1935/live
 HLS_BASE_URL=${BASE_URL}/hls
@@ -176,6 +181,12 @@ else
   grep -q '^STREAMRELAY_HTTP_PORT=' .env \
     && sed -i "s|^STREAMRELAY_HTTP_PORT=.*|STREAMRELAY_HTTP_PORT=${HTTP_PORT}|" .env \
     || echo "STREAMRELAY_HTTP_PORT=${HTTP_PORT}" >> .env
+  grep -q '^SERVER_LAN_SUBNET=' .env \
+    && sed -i "s|^SERVER_LAN_SUBNET=.*|SERVER_LAN_SUBNET=${SERVER_LAN_SUBNET}|" .env \
+    || echo "SERVER_LAN_SUBNET=${SERVER_LAN_SUBNET}" >> .env
+  grep -q '^SERVER_IP=' .env \
+    && sed -i "s|^SERVER_IP=.*|SERVER_IP=${SERVER_IP}|" .env \
+    || echo "SERVER_IP=${SERVER_IP}" >> .env
   grep -q '^PUBLIC_BASE_URL=' .env \
     && sed -i "s|^PUBLIC_BASE_URL=.*|PUBLIC_BASE_URL=${BASE_URL}|" .env \
     || echo "PUBLIC_BASE_URL=${BASE_URL}" >> .env
@@ -220,27 +231,27 @@ if ! docker compose config -q 2>/dev/null; then
   exit 1
 fi
 
-# ── 4. بناء وتشغيل Docker ──
-echo "[4/6] بناء الحاويات (قد يستغرق 5–15 دقيقة)..."
+# ── 4. بناء الواجهة ──
+echo "[4/7] بناء لوحة التحكم (frontend)..."
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/common-install.sh"
+build_frontend
+
+# ── 5. بناء وتشغيل Docker ──
+echo "[5/7] بناء الحاويات (قد يستغرق 5–15 دقيقة)..."
 export STREAMRELAY_HTTP_PORT="${HTTP_PORT}"
 docker compose pull postgres redis nginx 2>/dev/null || true
 docker compose build --parallel
 docker compose up -d
 
-# ── 5. انتظار جاهزية API ──
-echo "[5/6] انتظار تشغيل السيرفر..."
-for i in $(seq 1 60); do
-  if docker compose exec -T api wget -qO- "http://127.0.0.1:3000/api/health" >/dev/null 2>&1; then
-    break
-  fi
-  sleep 3
-  if [ "$i" -eq 60 ]; then
-    echo "تحذير: API لم يستجب بعد — تحقق: docker compose logs api"
-  fi
-done
+# ── 6. انتظار جاهزية API ──
+echo "[6/7] انتظار تشغيل السيرفر..."
+if ! wait_for_api 60 3; then
+  echo "تحذير: API لم يستجب بعد — تحقق: docker compose logs api"
+fi
 
-# ── 6. systemd (تشغيل تلقائي بعد إعادة التشغيل) ──
-echo "[6/6] تفعيل التشغيل التلقائي..."
+# ── 7. systemd (تشغيل تلقائي بعد إعادة التشغيل) ──
+echo "[7/7] تفعيل التشغيل التلقائي..."
 cat > /etc/systemd/system/streamrelay.service <<UNIT
 [Unit]
 Description=StreamRelay IPTV (Docker Compose)

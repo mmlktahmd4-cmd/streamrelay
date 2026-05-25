@@ -1,7 +1,10 @@
 import dotenv from 'dotenv';
 import path from 'path';
-import os from 'os';
 import { fileURLToPath } from 'url';
+import {
+  detectPhysicalLanIp,
+  resolveHomeSubnet,
+} from '../utils/network-ip.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '../../..');
@@ -14,14 +17,30 @@ function resolveDataDir(dir, fallback) {
 }
 
 function getLanIp() {
-  for (const interfaces of Object.values(os.networkInterfaces())) {
-    for (const net of interfaces || []) {
-      if (net.family === 'IPv4' && !net.internal) {
-        return net.address;
-      }
-    }
+  const envIp = process.env.SERVER_IP?.trim();
+  const homeSubnet = resolveHomeSubnet({
+    envSubnet: process.env.SERVER_LAN_SUBNET,
+    serverIp: envIp,
+    publicHostname: process.env.PUBLIC_BASE_URL?.trim()
+      && !process.env.PUBLIC_BASE_URL.includes('localhost')
+      ? (() => {
+        try { return new URL(process.env.PUBLIC_BASE_URL).hostname; } catch { return null; }
+      })()
+      : null,
+  });
+
+  if (envIp && (!homeSubnet || envIp.startsWith('192.168.') || envIp.startsWith('10.'))) {
+    return envIp;
   }
-  return '127.0.0.1';
+
+  const configured = process.env.PUBLIC_BASE_URL?.trim();
+  if (configured && !configured.includes('localhost') && !configured.includes('127.0.0.1')) {
+    try {
+      return new URL(configured).hostname;
+    } catch { /* ignore */ }
+  }
+
+  return detectPhysicalLanIp(homeSubnet);
 }
 
 function resolvePublicUrl(envValue, fallbackPort, pathSuffix = '') {

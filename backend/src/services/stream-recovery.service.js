@@ -1,5 +1,6 @@
 import * as channelService from './channel.service.js';
 import { getActiveStreams, scheduleAutoRestart, startStream } from './stream.service.js';
+import { startBandwidthTracking } from './bandwidth.service.js';
 import { checkProcessAlive } from '../utils/process.js';
 import { createChildLogger } from '../utils/logger.js';
 
@@ -22,6 +23,9 @@ export async function recoverStreamsOnStartup() {
     const pidAlive = channel.pid ? checkProcessAlive(channel.pid) : false;
 
     if (inMemory?.alive || pidAlive) {
+      if (pidAlive && channel.pid) {
+        startBandwidthTracking(channel.id, channel.pid, channel.slug, channel.name);
+      }
       continue;
     }
 

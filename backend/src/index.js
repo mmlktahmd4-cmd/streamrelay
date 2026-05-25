@@ -13,7 +13,8 @@ import { runMigrations } from './db/migrate.js';
 import { authenticate } from './middleware/auth.js';
 import { setupQueueProcessors } from './services/queue.service.js';
 import { stopAllStreams } from './services/stream.service.js';
-import { refreshPublicUrlCache, isOriginAllowed } from './services/public-url.service.js';
+import { refreshPublicUrlCache, isOriginAllowed, startNetworkWatcher } from './services/public-url.service.js';
+import { startBandwidthMonitor, recordEgressBytes } from './services/bandwidth.service.js';
 
 import authRoutes from './routes/auth.routes.js';
 import channelRoutes from './routes/channel.routes.js';
@@ -71,19 +72,31 @@ async function buildApp() {
     limits: { fileSize: 4 * 1024 * 1024 * 1024 },
   });
 
-  // Serve HLS segments in dev / without Nginx
+  const hlsHeaders = (res, filePath) => {
+    if (filePath.endsWith('.m3u8')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    } else if (filePath.endsWith('.ts')) {
+      res.setHeader('Cache-Control', 'max-age=5');
+    }
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  };
+
+  const hlsRoot = path.resolve(config.streaming.hlsDir);
+
+  // Serve HLS via Nginx (/hls/) or directly
   await app.register(fastifyStatic, {
-    root: path.resolve(config.streaming.hlsDir),
+    root: hlsRoot,
     prefix: '/hls/',
     decorateReply: false,
-    setHeaders(res, filePath) {
-      if (filePath.endsWith('.m3u8')) {
-        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-      } else if (filePath.endsWith('.ts')) {
-        res.setHeader('Cache-Control', 'max-age=5');
-      }
-      res.setHeader('Access-Control-Allow-Origin', '*');
-    },
+    setHeaders: hlsHeaders,
+  });
+
+  // نفس البث عبر /api/hls/ — يتجاوز حجب Nginx referer ويعمل من لوحة المشاهدة
+  await app.register(fastifyStatic, {
+    root: hlsRoot,
+    prefix: '/api/hls/',
+    decorateReply: false,
+    setHeaders: hlsHeaders,
   });
 
   // Serve uploaded VOD files
@@ -104,6 +117,14 @@ async function buildApp() {
   await app.register(systemRoutes, { prefix: '/api' });
   await app.register(mikrotikRoutes, { prefix: '/api/mikrotik' });
   await app.register(categoryRoutes, { prefix: '/api/categories' });
+
+  app.addHook('onResponse', async (request, reply) => {
+    if (reply.statusCode < 200 || reply.statusCode >= 400) return;
+    const match = request.url.match(/\/(?:api\/)?hls\/([^/?]+)\//);
+    if (!match) return;
+    const len = parseInt(String(reply.getHeader('content-length') || '0'), 10);
+    if (len > 0) recordEgressBytes(match[1], len);
+  });
 
   // Global error handler
   app.setErrorHandler((error, request, reply) => {
@@ -138,9 +159,14 @@ async function main() {
     fs.mkdirSync(config.streaming.vodDir, { recursive: true });
     await runMigrations();
     await refreshPublicUrlCache();
+    startNetworkWatcher();
+    startBandwidthMonitor();
+
+    // تسجيل معالجات الطابور دائماً — إذا توقف worker يتابع API تشغيل القنوات
+    await setupQueueProcessors();
 
     if (config.serverRole === 'full') {
-      await setupQueueProcessors();
+      // full: نفس المعالجات أعلاه (للتوافق مع التثبيت القديم)
     }
 
     const app = await buildApp();

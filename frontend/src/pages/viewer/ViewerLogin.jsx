@@ -6,7 +6,7 @@ import { setAuthPortal } from '../../utils/authStorage';
 import { Tv, Shield } from 'lucide-react';
 
 export default function ViewerLogin() {
-  const { login } = useAuth();
+  const { login, logout, user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -22,7 +22,15 @@ export default function ViewerLogin() {
     setError('');
     setLoading(true);
     try {
-      await login(username, password);
+      if (user && user.role !== 'viewer') {
+        logout();
+      }
+      const profile = await login(username, password);
+      if (profile.role !== 'viewer') {
+        setError('هذا الحساب للإدارة — استخدم حساب مشاهد');
+        logout();
+        return;
+      }
       navigate('/watch');
     } catch (err) {
       setError(getAuthErrorMessage(err, 'viewer'));
@@ -30,6 +38,10 @@ export default function ViewerLogin() {
       setLoading(false);
     }
   };
+
+  if (authLoading) {
+    return <div className="viewer-theme viewer-login-wrap flex items-center justify-center text-slate-400">جاري التحميل...</div>;
+  }
 
   return (
     <div className="viewer-theme viewer-login-wrap">
@@ -43,6 +55,12 @@ export default function ViewerLogin() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {user && user.role !== 'viewer' && (
+            <div className="viewer-expiry-banner expired text-center text-sm">
+              أنت مسجل كـ {user.role === 'admin' ? 'مدير' : 'مشغّل'}. أدخل حساب مشاهد للمتابعة.
+            </div>
+          )}
+
           {error && (
             <div className="viewer-expiry-banner expired text-center">{error}</div>
           )}

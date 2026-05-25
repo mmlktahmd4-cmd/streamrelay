@@ -125,6 +125,7 @@ export const deleteUser = (id) => api.delete(`/users/${id}`);
 
 // System
 export const getDashboard = () => api.get('/dashboard');
+export const getBandwidth = () => api.get('/bandwidth');
 export const getMetrics = () => api.get('/metrics');
 export const getStreamHealth = () => api.get('/health/streams');
 export const getActiveStreams = () => api.get('/streams/active');

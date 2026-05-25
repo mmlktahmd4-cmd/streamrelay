@@ -22,7 +22,15 @@ lsb_release -a
 
 ---
 
-## 2) التثبيت من GitHub (موصى به)
+## 2) التثبيت السهل (موصى به)
+
+**أمر واحد:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mmlktahmd4-cmd/streamrelay/main/scripts/easy-install.sh | sudo bash
+```
+
+**أو clone + تثبيت:**
 
 ```bash
 sudo apt update
@@ -32,7 +40,7 @@ cd /opt/streamrelay
 sudo bash scripts/ubuntu-quick-install.sh
 ```
 
-**أمر واحد:**
+**بديل (install-from-github):**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/mmlktahmd4-cmd/streamrelay/main/scripts/install-from-github.sh \
@@ -45,14 +53,13 @@ curl -fsSL https://raw.githubusercontent.com/mmlktahmd4-cmd/streamrelay/main/scr
 
 | الخطوة | ماذا يحدث |
 |--------|-----------|
-| `[1/6]` | تثبيت **Docker** و Docker Compose |
-| `[2/6]` | نسخ المشروع إلى `/opt/streamrelay` |
-| `[3/6]` | إنشاء ملف **`.env`** |
-| `[4/6]` | بناء وتشغيل الحاويات (5–15 دقيقة) |
-| `[5/6]` | انتظار جاهزية API |
-| `[6/6]` | تفعيل **systemd** للتشغيل التلقائي |
-
-> إذا ظهر `[1/6] تثبيت Docker` — **كل شيء طبيعي**. لا توقف العملية.
+| `[1/7]` | تثبيت **Docker** و Docker Compose |
+| `[2/7]` | نسخ المشروع إلى `/opt/streamrelay` |
+| `[3/7]` | إنشاء ملف **`.env`** |
+| `[4/7]` | بناء **frontend** (لوحة التحكم) |
+| `[5/7]` | بناء وتشغيل الحاويات (5–15 دقيقة) |
+| `[6/7]` | انتظار جاهزية API |
+| `[7/7]` | تفعيل **systemd** للتشغيل التلقائي |
 
 **مهم — تشغيل السكربتات:**
 
@@ -284,9 +291,13 @@ sudo rm -rf /opt/streamrelay
 
 | الملف | الوظيفة |
 |-------|---------|
+| `scripts/easy-install.sh` | **التثبيت السهل** — أمر واحد |
 | `scripts/ubuntu-quick-install.sh` | التثبيت الرئيسي |
 | `scripts/install-from-github.sh` | clone + تثبيت |
 | `scripts/update-from-github.sh` | تحديث من GitHub |
+| `scripts/deploy-update.sh` | بناء frontend + restart |
+| `scripts/launch-production.sh` | إطلاق إنتاج |
+| `scripts/fix-server-ip.sh` | تصحيح IP الشبكة |
 | `scripts/check-ports.sh` | فحص المنافذ |
 | `.env` | إعدادات وكلمات السر |
 | `INSTALL-CREDENTIALS.txt` | بيانات الدخول |

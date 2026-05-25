@@ -1,11 +1,11 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { getDashboard, restartServer, getHealth, refreshNetwork } from '../api/client';
+import { getDashboard, getBandwidth, restartServer, getHealth, refreshNetwork } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import {
   Radio, Users, Activity, Cpu, HardDrive, AlertTriangle, ArrowLeft,
-  Server, Clock, Monitor, Network, Disc, RefreshCw, Power, Wifi,
+  Server, Clock, Monitor, Network, Disc, RefreshCw, Power, Wifi, Download, Upload,
 } from 'lucide-react';
 
 const iconStyles = {
@@ -54,6 +54,13 @@ function formatBytes(bytes) {
   return `${n.toFixed(i > 1 ? 1 : 0)} ${units[i]}`;
 }
 
+function formatBitrate(bps) {
+  if (!bps || bps <= 0) return '0 Mbps';
+  if (bps >= 1_000_000) return `${(bps / 1_000_000).toFixed(2)} Mbps`;
+  if (bps >= 1_000) return `${(bps / 1_000).toFixed(0)} Kbps`;
+  return `${bps} bps`;
+}
+
 function formatUptime(seconds) {
   if (!seconds) return '-';
   const d = Math.floor(seconds / 86400);
@@ -81,6 +88,7 @@ function DetailRow({ label, value }) {
 export default function Dashboard() {
   const { isAdmin } = useAuth();
   const [data, setData] = useState(null);
+  const [bandwidth, setBandwidth] = useState(null);
   const [loading, setLoading] = useState(true);
   const [restarting, setRestarting] = useState(false);
   const [networkMsg, setNetworkMsg] = useState('');
@@ -107,6 +115,18 @@ export default function Dashboard() {
     const interval = setInterval(fetchDashboard, 5000);
     return () => clearInterval(interval);
   }, [fetchDashboard]);
+
+  useEffect(() => {
+    const fetchBw = async () => {
+      try {
+        const { data: bw } = await getBandwidth();
+        setBandwidth(bw);
+      } catch { /* ignore */ }
+    };
+    fetchBw();
+    const interval = setInterval(fetchBw, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const waitForServer = async (maxMs = 90000) => {
     const start = Date.now();
@@ -150,6 +170,7 @@ export default function Dashboard() {
   const channels = data?.channels || {};
   const sys = data?.system || {};
   const network = data?.network || {};
+  const bw = bandwidth || data?.bandwidth || {};
   const statusLabels = { running: 'نشطة', stopped: 'متوقفة', error: 'خطأ', starting: 'تشغيل', restarting: 'إعادة تشغيل' };
   const primaryDisk = sys.disk?.[0];
 
@@ -220,13 +241,97 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-7 gap-4 mb-6">
         <StatCard icon={Radio} label="القنوات النشطة" value={channels.running || 0} sub={`من ${data?.total_channels || 0} قناة`} color="green" />
         <StatCard icon={AlertTriangle} label="قنوات بها خطأ" value={channels.error || 0} color="red" />
         <StatCard icon={Activity} label="بثوث نشطة" value={data?.active_streams || 0} color="brand" />
+        <StatCard
+          icon={Download}
+          label="سحب (داخل)"
+          value={formatBitrate(bw.total_pull_bps)}
+          sub={bw.total_pull_session_bytes ? formatBytes(bw.total_pull_session_bytes) : 'من المصدر'}
+          color="yellow"
+        />
+        <StatCard
+          icon={Upload}
+          label="بث خارج (خروج)"
+          value={formatBitrate(bw.total_egress_bps)}
+          sub={bw.total_egress_session_bytes ? formatBytes(bw.total_egress_session_bytes) : 'للمشاهدين'}
+          color="red"
+        />
         <StatCard icon={Wifi} label="متصلين الآن" value={data?.online_users || 0} sub="أونلاين" color="green" />
         <StatCard icon={Users} label="إجمالي الحسابات" value={data?.active_users || 0} color="brand" />
       </div>
+
+      {(bw.channels?.length > 0) && (
+        <div className="card mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+            <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
+              <Activity className="w-5 h-5 text-blue-600" /> استهلاك البث — القنوات الشغالة
+            </h2>
+            <span className="text-xs text-emerald-600 flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              تحديث كل ثانية
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-right text-slate-500 border-b border-slate-100">
+                  <th className="py-2 font-medium">القناة</th>
+                  <th className="py-2 font-medium">المعرّف</th>
+                  <th className="py-2 font-medium">سحب (داخل)</th>
+                  <th className="py-2 font-medium">بث خارج (خروج)</th>
+                  <th className="py-2 font-medium">سحب — الجلسة</th>
+                  <th className="py-2 font-medium">خروج — الجلسة</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bw.channels.map((ch) => (
+                  <tr key={ch.channel_id} className="border-b border-slate-50 last:border-0">
+                    <td className="py-2.5 font-medium text-slate-800">{ch.name || ch.slug}</td>
+                    <td className="py-2.5 font-mono text-xs text-slate-500">{ch.slug}</td>
+                    <td className="py-2.5">
+                      <span className={`font-bold ${ch.pull_bps > 0 ? 'text-amber-700' : 'text-slate-400'}`}>
+                        {formatBitrate(ch.pull_bps ?? ch.bps)}
+                      </span>
+                    </td>
+                    <td className="py-2.5">
+                      <span className={`font-bold ${ch.egress_bps > 0 ? 'text-red-600' : 'text-slate-400'}`}>
+                        {formatBitrate(ch.egress_bps)}
+                      </span>
+                    </td>
+                    <td className="py-2.5 text-slate-600">{formatBytes(ch.pull_session_bytes ?? ch.session_bytes)}</td>
+                    <td className="py-2.5 text-slate-600">{formatBytes(ch.egress_session_bytes)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="bg-slate-50">
+                  <td colSpan={2} className="py-2.5 font-bold text-slate-700">الإجمالي</td>
+                  <td className="py-2.5 font-bold text-amber-700">{formatBitrate(bw.total_pull_bps)}</td>
+                  <td className="py-2.5 font-bold text-red-600">{formatBitrate(bw.total_egress_bps)}</td>
+                  <td className="py-2.5 font-bold text-slate-700">{formatBytes(bw.total_pull_session_bytes)}</td>
+                  <td className="py-2.5 font-bold text-slate-700">{formatBytes(bw.total_egress_session_bytes)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          <div className="text-xs text-slate-400 mt-3 pt-3 border-t border-slate-100 space-y-1">
+            {(bw.host_rx_bps > 0) && (
+              <p>
+                استقبال الشبكة (RX): <strong className="text-slate-600">{formatBitrate(bw.host_rx_bps)}</strong>
+              </p>
+            )}
+            {(bw.host_tx_bps > 0) && (
+              <p>
+                إرسال الشبكة (TX): <strong className="text-slate-600">{formatBitrate(bw.host_tx_bps)}</strong>
+                {' '}— إجمالي الخروج من السيرفر
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {(data?.online_users_list?.length > 0) && (
         <div className="card mb-6">
@@ -263,6 +368,18 @@ export default function Dashboard() {
             <DetailRow label="عدد الأنوية" value={sys.cpu?.cores} />
             <DetailRow label="مدة تشغيل النظام" value={formatUptime(sys.uptime)} />
             <DetailRow label="مدة تشغيل التطبيق" value={formatUptime(sys.app_uptime)} />
+            {bw.host_rx_bps > 0 && (
+              <DetailRow label="استقبال الشبكة (RX)" value={formatBitrate(bw.host_rx_bps)} />
+            )}
+            {bw.host_tx_bps > 0 && (
+              <DetailRow label="إرسال الشبكة (TX)" value={formatBitrate(bw.host_tx_bps)} />
+            )}
+            {bw.total_pull_bps > 0 && (
+              <DetailRow label="سحب القنوات (داخل)" value={formatBitrate(bw.total_pull_bps)} />
+            )}
+            {bw.total_egress_bps > 0 && (
+              <DetailRow label="بث خارج (للمشاهدين)" value={formatBitrate(bw.total_egress_bps)} />
+            )}
           </div>
         </div>
 
@@ -369,10 +486,20 @@ export default function Dashboard() {
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {sys.network.interfaces.map((iface, i) => (
-              <div key={`${iface.name}-${iface.address}-${i}`} className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                <p className="text-sm font-bold text-slate-700">{iface.name}</p>
+              <div
+                key={`${iface.name}-${iface.address}-${i}`}
+                className={`p-3 rounded-lg border ${
+                  iface.is_primary
+                    ? 'bg-cyan-50 border-cyan-200'
+                    : 'bg-slate-50 border-slate-200'
+                }`}
+              >
+                <p className="text-sm font-bold text-slate-700">{iface.label || iface.name}</p>
                 <p className="text-xs text-slate-500 mt-1 font-mono">{iface.address}</p>
-                <p className="text-xs text-slate-400">{iface.family}{iface.mac ? ` · ${iface.mac}` : ''}</p>
+                <p className="text-xs text-slate-400">
+                  {iface.family}{iface.mac ? ` · ${iface.mac}` : ''}
+                  {iface.is_primary ? ' · IP البث' : ''}
+                </p>
               </div>
             ))}
           </div>

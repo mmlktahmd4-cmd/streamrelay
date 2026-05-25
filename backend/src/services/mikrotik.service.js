@@ -16,7 +16,9 @@ export function subnetFromServerIp(ip) {
 }
 
 export function buildViewerUrl(serverIp, webPort) {
-  return `http://${serverIp}:${webPort}/watch/login`;
+  const defaultPort = 80;
+  const host = webPort === defaultPort ? serverIp : `${serverIp}:${webPort}`;
+  return `http://${host}/watch/login`;
 }
 
 export function getServerInfo() {

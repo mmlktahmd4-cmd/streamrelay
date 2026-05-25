@@ -1,55 +1,21 @@
-# رفع المشروع على GitHub والتثبيت من هناك
+# StreamRelay — GitHub: التثبيت والتحديث
 
-## 1) رفع المشروع من Windows
-
-### الطريقة أ — GitHub Desktop (الأسهل)
-
-1. حمّل [GitHub Desktop](https://desktop.github.com/)
-2. **File → Add Local Repository** → اختر مجلد `iptv`
-3. **Publish repository** → اسم المستودع: `streamrelay` → Private (موصى به)
-4. اضغط **Publish**
-
-### الطريقة ب — سطر الأوامر
-
-```powershell
-# ثبّت Git من: https://git-scm.com/download/win
-cd Desktop\iptv
-
-git init
-git add .
-git commit -m "Initial commit — StreamRelay IPTV"
-git branch -M main
-git remote add origin https://github.com/mmlktahmd4-cmd/streamrelay.git
-git push -u origin main
-```
-
-> أنشئ مستودعاً فارغاً أولاً على [github.com/new](https://github.com/new) بدون README.
+**المستودع:** https://github.com/mmlktahmd4-cmd/streamrelay
 
 ---
 
-## 2) ما لا يُرفع على GitHub (محمي تلقائياً)
-
-- `.env` — كلمات السر
-- `node_modules/`
-- `data/hls/` — ملفات البث
-- `INSTALL-CREDENTIALS.txt`
-
----
-
-## 3) التثبيت على Ubuntu 22 / 24 من GitHub
-
-> دليل مفصّل: [docs/INSTALL-UBUNTU-22.md](docs/INSTALL-UBUNTU-22.md)
+## 1) التثبيت السهل (Ubuntu 22 / 24)
 
 ### أمر واحد:
 
 ```bash
-sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/mmlktahmd4-cmd/streamrelay/main/scripts/install-from-github.sh)" -- https://github.com/mmlktahmd4-cmd/streamrelay.git
+curl -fsSL https://raw.githubusercontent.com/mmlktahmd4-cmd/streamrelay/main/scripts/easy-install.sh | sudo bash
 ```
 
-### أو خطوة بخطوة:
+### أو clone + تثبيت:
 
 ```bash
-sudo apt install -y git
+sudo apt install -y git curl
 sudo git clone https://github.com/mmlktahmd4-cmd/streamrelay.git /opt/streamrelay
 cd /opt/streamrelay
 sudo bash scripts/ubuntu-quick-install.sh
@@ -57,7 +23,33 @@ sudo bash scripts/ubuntu-quick-install.sh
 
 ---
 
-## 4) التحديث لاحقاً
+## 2) ماذا يفعل التثبيت؟
+
+| الخطوة | الوصف |
+|--------|--------|
+| Docker | تثبيت Docker + Compose |
+| `.env` | إنشاء إعدادات + كلمات سر عشوائية |
+| Frontend | بناء لوحة التحكم |
+| Docker | postgres, redis, api, worker, frontend, nginx |
+| systemd | تشغيل تلقائي بعد reboot |
+
+---
+
+## 3) بعد التثبيت
+
+```bash
+cat /opt/streamrelay/INSTALL-CREDENTIALS.txt
+curl http://127.0.0.1/api/health
+```
+
+| الخدمة | الرابط |
+|--------|--------|
+| الإدارة | `http://SERVER-IP/login` |
+| المشاهدة | `http://SERVER-IP/watch/login` |
+
+---
+
+## 4) التحديث
 
 ```bash
 cd /opt/streamrelay
@@ -66,20 +58,66 @@ sudo bash scripts/update-from-github.sh
 
 ---
 
-## 5) مستودع خاص (Private)
-
-- التثبيت يحتاج **Personal Access Token** أو SSH:
+## 5) سكربتات الصيانة
 
 ```bash
-# Token (HTTPS)
-sudo git clone https://TOKEN@github.com/mmlktahmd4-cmd/streamrelay.git /opt/streamrelay
-
-# SSH
-sudo git clone git@github.com:mmlktahmd4-cmd/streamrelay.git /opt/streamrelay
+sudo bash scripts/fix-server-ip.sh          # تصحيح IP
+sudo bash scripts/launch-production.sh      # إطلاق إنتاج
+sudo bash scripts/deploy-update.sh          # بناء + restart
+sudo bash scripts/check-ports.sh            # فحص المنافذ
+sudo bash scripts/reset-admin-password.sh   # reset admin
 ```
 
 ---
 
-## 6) رابط المستودع
+## 6) ما لا يُرفع على GitHub
 
-https://github.com/mmlktahmd4-cmd/streamrelay
+- `.env` — كلمات السر
+- `node_modules/`
+- `frontend/dist/`
+- `data/hls/` — ملفات البث
+- `INSTALL-CREDENTIALS.txt`
+
+---
+
+## 7) مستودع خاص (Private)
+
+```bash
+# Token (HTTPS)
+sudo git clone https://TOKEN@github.com/USER/streamrelay.git /opt/streamrelay
+
+# SSH
+sudo git clone git@github.com:USER/streamrelay.git /opt/streamrelay
+```
+
+---
+
+## 8) رفع التعديلات من السيرفر
+
+```bash
+cd /home/USER/streamrelay
+git add .
+git commit -m "وصف التعديل"
+git push origin main
+```
+
+---
+
+## 9) استكشاف الأخطاء
+
+```bash
+docker compose ps
+docker compose logs api --tail 50
+sudo bash scripts/launch-production.sh
+```
+
+**502 Bad Gateway:** عادة API متوقف — `docker compose restart api`
+
+**IP خاطئ (172.18.x):** `sudo bash scripts/fix-server-ip.sh`
+
+---
+
+## 10) روابط مهمة
+
+- المستودع: https://github.com/mmlktahmd4-cmd/streamrelay
+- دليل Ubuntu: [docs/INSTALL-UBUNTU-22.md](docs/INSTALL-UBUNTU-22.md)

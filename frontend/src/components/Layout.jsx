@@ -1,10 +1,10 @@
+import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { refreshNetwork } from '../api/client';
 import {
   LayoutDashboard, Radio, Users, ScrollText, LogOut, Menu, X, Tv, Router, FolderOpen,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'لوحة التحكم', end: true },
@@ -16,13 +16,15 @@ const navItems = [
 ];
 
 export default function Layout() {
-  const { user, logout, isAdmin } = useAuth();
+  const { user, logout, isAdmin, isOperator } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
-    refreshNetwork().catch(() => {});
-  }, []);
+    if (isOperator) {
+      refreshNetwork().catch(() => {});
+    }
+  }, [isOperator]);
 
   const handleLogout = () => {
     logout();

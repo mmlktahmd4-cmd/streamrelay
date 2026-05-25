@@ -13,6 +13,11 @@ import * as channelService from './channel.service.js';
 import { createChildLogger } from '../utils/logger.js';
 
 import { checkProcessAlive, killProcessTree } from '../utils/process.js';
+import {
+  startBandwidthTracking,
+  stopBandwidthTracking,
+  handleFfmpegStderr,
+} from './bandwidth.service.js';
 
 
 
@@ -125,11 +130,9 @@ export async function scheduleAutoRestart(channelId) {
 function buildFFmpegArgs(channel) {
 
   const args = [
-
     '-hide_banner',
-
     '-loglevel', 'warning',
-
+    '-stats_period', '1',
     '-reconnect', '1',
 
     '-reconnect_streamed', '1',
@@ -343,15 +346,11 @@ export async function startStream(channelId) {
 
 
   proc.stderr.on('data', (data) => {
-
+    handleFfmpegStderr(channelId, data);
     const msg = data.toString().trim();
-
     if (msg) {
-
       log.debug({ channelId, msg }, 'FFmpeg stderr');
-
     }
-
   });
 
 
@@ -387,9 +386,8 @@ export async function startStream(channelId) {
 
 
   proc.on('exit', async (code, signal) => {
-
     log.info({ channelId, code, signal }, 'FFmpeg exited');
-
+    await stopBandwidthTracking(channelId);
     activeProcesses.delete(channelId);
 
     const wasManualStop = manuallyStopped.has(channelId);
@@ -510,7 +508,7 @@ export async function startStream(channelId) {
 
   await channelService.logStreamEvent(channelId, 'info', `Stream started PID=${proc.pid}`);
 
-
+  startBandwidthTracking(channelId, proc.pid, channel.slug, channel.name);
 
   return { status: 'running', pid: proc.pid };
 
@@ -563,14 +561,11 @@ export async function stopStream(channelId, options = {}) {
   const proc = activeProcesses.get(channelId);
 
   if (proc) {
-
     proc.removeAllListeners('exit');
-
     proc.removeAllListeners('error');
-
     killProcessTree(proc.pid);
-
     activeProcesses.delete(channelId);
+    await stopBandwidthTracking(channelId);
 
   } else {
 

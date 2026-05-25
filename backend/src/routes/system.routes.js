@@ -4,6 +4,7 @@ import * as channelService from '../services/channel.service.js';
 import * as serverRestart from '../services/server-restart.service.js';
 import { getPublicUrls } from '../services/public-url.service.js';
 import { getOnlineUsersCount, getOnlineUsers } from '../services/online-presence.service.js';
+import { getBandwidthStats } from '../services/bandwidth.service.js';
 import { requireMinRole } from '../middleware/auth.js';
 import { config } from '../config/index.js';
 import { query } from '../db/pool.js';
@@ -43,18 +44,27 @@ export default async function systemRoutes(fastify) {
       };
     });
 
+    // Bandwidth stats (تحديث سريع — كل ثانية)
+    protectedRoutes.get('/bandwidth', async () => {
+      const runningChannels = await channelService.getRunningChannels();
+      return getBandwidthStats(runningChannels);
+    });
+
     // Dashboard stats
     protectedRoutes.get('/dashboard', async () => {
-      const [channels, users, logs] = await Promise.all([
+      const [channels, users, logs, runningChannels] = await Promise.all([
         query(`SELECT status, COUNT(*) as count FROM channels WHERE is_active = true GROUP BY status`),
         query('SELECT COUNT(*) as count FROM users WHERE is_active = true'),
         query(`SELECT COUNT(*) as count FROM stream_logs WHERE created_at > NOW() - INTERVAL '24 hours'`),
+        channelService.getRunningChannels(),
       ]);
 
       const channelStats = {};
       for (const row of channels.rows) {
         channelStats[row.status] = parseInt(row.count, 10);
       }
+
+      const bandwidth = await getBandwidthStats(runningChannels);
 
       return {
         channels: channelStats,
@@ -69,6 +79,7 @@ export default async function systemRoutes(fastify) {
         })),
         logs_24h: parseInt(logs.rows[0].count, 10),
         active_streams: (channelStats.running || 0) + (channelStats.starting || 0) + (channelStats.restarting || 0),
+        bandwidth,
         system: getSystemMetrics(),
         network: getPublicUrls(),
       };
