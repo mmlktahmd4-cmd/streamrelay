@@ -20,6 +20,8 @@ fi
 
 cd "$INSTALL_DIR"
 chmod +x scripts/*.sh 2>/dev/null || true
+# shellcheck source=lib/network.sh
+source "$INSTALL_DIR/scripts/lib/network.sh" 2>/dev/null || true
 
 echo "=== git pull ==="
 git fetch origin
@@ -41,3 +43,5 @@ bash "${SCRIPT_DIR}/deploy-update.sh"
 
 echo "=== تم التحديث ==="
 docker compose ps
+echo ""
+echo "العنوان: ${PUBLIC_BASE_URL:-http://$(detect_server_ip)}"

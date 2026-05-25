@@ -9,6 +9,8 @@ INSTALL_DIR="${INSTALL_DIR:-/opt/streamrelay}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 chmod +x "${SCRIPT_DIR}"/*.sh 2>/dev/null || true
+# shellcheck source=lib/network.sh
+source "${SCRIPT_DIR}/lib/network.sh"
 
 port_in_use() {
   local port="$1"
@@ -110,10 +112,8 @@ chmod +x scripts/*.sh 2>/dev/null || true
 
 # ── 3. ملف البيئة ──
 echo "[3/7] إعداد .env ..."
-SERVER_IP="$(hostname -I | tr ' ' '\n' | grep '^192\.168\.' | head -1)"
-SERVER_IP="${SERVER_IP:-$(hostname -I | tr ' ' '\n' | grep -v '^172\.' | head -1)}"
-SERVER_IP="${SERVER_IP:-$(hostname -I | awk '{print $1}')}"
-SERVER_LAN_SUBNET="$(echo "$SERVER_IP" | awk -F. '{print $1"."$2"."$3".0/24}')"
+SERVER_IP="$(detect_server_ip)"
+SERVER_LAN_SUBNET="$(ip_to_subnet "$SERVER_IP")"
 JWT_SECRET="$(openssl rand -hex 32)"
 JWT_REFRESH="$(openssl rand -hex 32)"
 URL_SIGNING="$(openssl rand -hex 32)"
@@ -301,6 +301,9 @@ echo "    docker compose logs -f api # سجل السيرفر"
 echo "    docker compose restart     # إعادة تشغيل"
 echo ""
 echo "  في صفحة MikroTik اكتب IP السيرفر: ${SERVER_IP}"
+if [ -n "$SERVER_LAN_SUBNET" ]; then
+  echo "  شبكة العملاء (اقتراح): ${SERVER_LAN_SUBNET}"
+fi
 echo "=============================================="
 
 # حفظ بيانات الدخول

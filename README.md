@@ -66,7 +66,7 @@ sudo bash scripts/update-from-github.sh
 | `scripts/launch-production.sh` | إطلاق إنتاج (IP + بناء + Docker) |
 | `scripts/fix-server-ip.sh` | تصحيح IP الشبكة وروابط القنوات |
 | `scripts/check-ports.sh` | فحص المنافذ |
-| `scripts/reset-admin-password.sh` | إعادة تعيين كلمة مرور admin |
+| `scripts/install-preflight.sh` | فحص قبل التثبيت |
 
 ---
 
@@ -108,6 +108,7 @@ sudo systemctl status streamrelay
 
 | الملف | المحتوى |
 |-------|---------|
+| [docs/INSTALL-TROUBLESHOOTING.md](docs/INSTALL-TROUBLESHOOTING.md) | **حل مشاكل التثبيت** |
 | [docs/INSTALL-UBUNTU-22.md](docs/INSTALL-UBUNTU-22.md) | دليل Ubuntu 22/24 الكامل |
 | [INSTALL-UBUNTU.md](INSTALL-UBUNTU.md) | ملخص التثبيت |
 | [INSTALL-GITHUB.md](INSTALL-GITHUB.md) | GitHub والتحديث |
@@ -121,8 +122,6 @@ docker compose -f docker-compose.dev.yml up -d
 cd backend && npm install && npm run dev
 cd frontend && npm install && npm run dev
 ```
-
----
 
 ## المتطلبات
 

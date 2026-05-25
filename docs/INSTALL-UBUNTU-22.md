@@ -185,6 +185,16 @@ sudo systemctl status streamrelay # خدمة systemd
 
 ## 10) استكشاف الأخطاء
 
+### awk: unterminated string
+
+**لا تستخدم awk يدوياً** — حدّث المشروع:
+
+```bash
+cd /opt/streamrelay && git pull && sudo bash scripts/ubuntu-quick-install.sh
+```
+
+> [INSTALL-TROUBLESHOOTING.md](INSTALL-TROUBLESHOOTING.md) — قائمة كاملة بالمشاكل والحلول
+
 ### git pull — dubious ownership
 
 ```bash

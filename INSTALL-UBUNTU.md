@@ -1,5 +1,6 @@
-# StreamRelay — تثبيت سريع على Ubuntu
+# StreamRelay — تثبيت سريع على Ubuntu 22 / 24
 
+> **مشاكل التثبيت:** [docs/INSTALL-TROUBLESHOOTING.md](docs/INSTALL-TROUBLESHOOTING.md)
 > دليل مفصّل: [docs/INSTALL-UBUNTU-22.md](docs/INSTALL-UBUNTU-22.md)
 
 ---

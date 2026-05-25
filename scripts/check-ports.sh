@@ -2,6 +2,10 @@
 # فحص المنافذ قبل/بعد تثبيت StreamRelay على Ubuntu 22/24
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/network.sh
+source "$SCRIPT_DIR/lib/network.sh"
+
 check_port() {
   local port="$1"
   local label="$2"
