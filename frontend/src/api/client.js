@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { clearAuthStorage, getLoginPath } from '../utils/authStorage';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
@@ -37,9 +38,10 @@ api.interceptors.response.use(
           original.headers.Authorization = `Bearer ${data.access_token}`;
           return api(original);
         } catch {
-          localStorage.clear();
-          const isViewerPath = window.location.pathname.startsWith('/watch');
-          window.location.href = isViewerPath ? '/watch/login' : '/login';
+          clearAuthStorage();
+          if (!String(original?.url || '').includes('/auth/me')) {
+            window.location.href = getLoginPath();
+          }
         }
       }
     }

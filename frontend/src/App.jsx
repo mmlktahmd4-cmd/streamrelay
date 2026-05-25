@@ -1,5 +1,7 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
 import { useAuth } from './context/AuthContext';
+import { getLoginPath, setAuthPortal } from './utils/authStorage';
 import Layout from './components/Layout';
 import ViewerLayout from './components/viewer/ViewerLayout';
 import Login from './pages/Login';
@@ -18,6 +20,12 @@ import LoadingSpinner from './components/ui/LoadingSpinner';
 
 function AdminRoute({ children, minRole }) {
   const { user, loading } = useAuth();
+
+  useEffect(() => {
+    if (user && user.role !== 'viewer') {
+      setAuthPortal(user.role);
+    }
+  }, [user]);
   if (loading) return <LoadingSpinner className="min-h-screen" />;
   if (!user) return <Navigate to="/login" replace />;
   if (user.role === 'viewer') return <Navigate to="/watch" replace />;
@@ -28,6 +36,12 @@ function AdminRoute({ children, minRole }) {
 
 function ViewerRoute({ children }) {
   const { user, loading } = useAuth();
+
+  useEffect(() => {
+    if (user?.role === 'viewer') {
+      setAuthPortal('viewer');
+    }
+  }, [user]);
   if (loading) return <LoadingSpinner className="min-h-screen" />;
   if (!user) return <Navigate to="/watch/login" replace />;
   return children;
@@ -46,8 +60,19 @@ function GuestAdmin({ children }) {
 function GuestViewer({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <LoadingSpinner className="min-h-screen" />;
-  if (user) return <Navigate to="/watch" replace />;
+  if (user) {
+    if (user.role === 'viewer') return <Navigate to="/watch" replace />;
+    return <Navigate to="/" replace />;
+  }
   return children;
+}
+
+function NotFoundRedirect() {
+  const location = useLocation();
+  if (location.pathname.startsWith('/watch')) {
+    return <Navigate to="/watch/login" replace />;
+  }
+  return <Navigate to={getLoginPath('admin')} replace />;
 }
 
 export default function App() {
@@ -74,7 +99,7 @@ export default function App() {
         <Route path="logs" element={<Logs />} />
       </Route>
 
-      <Route path="*" element={<Navigate to="/watch/login" replace />} />
+      <Route path="*" element={<NotFoundRedirect />} />
     </Routes>
   );
 }

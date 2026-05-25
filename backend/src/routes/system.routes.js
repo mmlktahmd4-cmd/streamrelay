@@ -1,6 +1,5 @@
 import { getSystemMetrics } from '../utils/metrics.js';
 import { getHealthSummary } from '../services/health.service.js';
-import * as streamService from '../services/stream.service.js';
 import * as channelService from '../services/channel.service.js';
 import * as serverRestart from '../services/server-restart.service.js';
 import { getPublicUrls } from '../services/public-url.service.js';
@@ -30,11 +29,19 @@ export default async function systemRoutes(fastify) {
     protectedRoutes.get('/health/streams', async () => getHealthSummary());
 
     // Active streams
-    protectedRoutes.get('/streams/active', async () => ({
-      count: streamService.getActiveCount(),
-      streams: streamService.getActiveStreams(),
-      max: config.streaming.maxConcurrent,
-    }));
+    protectedRoutes.get('/streams/active', async () => {
+      const channels = await channelService.getRunningChannels();
+      return {
+        count: channels.length,
+        streams: channels.map((channel) => ({
+          channelId: channel.id,
+          slug: channel.slug,
+          status: channel.status,
+          pid: channel.pid,
+        })),
+        max: config.streaming.maxConcurrent,
+      };
+    });
 
     // Dashboard stats
     protectedRoutes.get('/dashboard', async () => {
@@ -61,7 +68,7 @@ export default async function systemRoutes(fastify) {
           last_seen: new Date(u.lastSeen).toISOString(),
         })),
         logs_24h: parseInt(logs.rows[0].count, 10),
-        active_streams: streamService.getActiveCount(),
+        active_streams: (channelStats.running || 0) + (channelStats.starting || 0) + (channelStats.restarting || 0),
         system: getSystemMetrics(),
         network: getPublicUrls(),
       };

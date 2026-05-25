@@ -1,5 +1,5 @@
 import * as channelService from '../services/channel.service.js';
-import * as streamService from '../services/stream.service.js';
+import { runStreamJob } from '../services/queue.service.js';
 import * as categoryService from '../services/category.service.js';
 import { generateSignedUrl } from '../utils/crypto.js';
 import { validate, createChannelSchema, updateChannelSchema, importM3USchema, paginationSchema } from '../middleware/validate.js';
@@ -160,7 +160,14 @@ export default async function channelRoutes(fastify) {
   fastify.delete('/:id', {
     preHandler: [requireMinRole('operator')],
   }, async (request, reply) => {
-    await streamService.stopStream(request.params.id, { forDelete: true });
+    try {
+      await runStreamJob('stop-channel', {
+        channelId: request.params.id,
+        options: { forDelete: true },
+      });
+    } catch {
+      /* channel may already be stopped */
+    }
     await channelService.deleteChannel(request.params.id);
     reply.status(204);
   });
@@ -186,7 +193,7 @@ export default async function channelRoutes(fastify) {
     preHandler: [requireMinRole('operator')],
   }, async (request, reply) => {
     try {
-      return await streamService.startStream(request.params.id);
+      return await runStreamJob('start-channel', { channelId: request.params.id });
     } catch (err) {
       return reply.status(500).send({ error: err.message });
     }
@@ -195,8 +202,12 @@ export default async function channelRoutes(fastify) {
   // Stop stream
   fastify.post('/:id/stop', {
     preHandler: [requireMinRole('operator')],
-  }, async (request) => {
-    return streamService.stopStream(request.params.id);
+  }, async (request, reply) => {
+    try {
+      return await runStreamJob('stop-channel', { channelId: request.params.id });
+    } catch (err) {
+      return reply.status(500).send({ error: err.message });
+    }
   });
 
   // Restart stream
@@ -204,7 +215,7 @@ export default async function channelRoutes(fastify) {
     preHandler: [requireMinRole('operator')],
   }, async (request, reply) => {
     try {
-      return await streamService.restartStream(request.params.id);
+      return await runStreamJob('restart-channel', { channelId: request.params.id });
     } catch (err) {
       return reply.status(500).send({ error: err.message });
     }

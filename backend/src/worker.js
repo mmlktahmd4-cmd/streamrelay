@@ -1,7 +1,7 @@
-import { config } from './config/index.js';
 import { createChildLogger } from './utils/logger.js';
 import { runMigrations } from './db/migrate.js';
 import { setupQueueProcessors, closeQueue } from './services/queue.service.js';
+import { recoverStreamsOnStartup } from './services/stream-recovery.service.js';
 
 const log = createChildLogger('worker');
 
@@ -10,6 +10,7 @@ async function main() {
 
   await runMigrations();
   await setupQueueProcessors();
+  await recoverStreamsOnStartup();
 
   log.info('Worker ready, processing jobs');
 

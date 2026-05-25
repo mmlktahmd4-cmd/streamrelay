@@ -139,7 +139,7 @@ async function main() {
     await runMigrations();
     await refreshPublicUrlCache();
 
-    if (config.serverRole !== 'api-only') {
+    if (config.serverRole === 'full') {
       await setupQueueProcessors();
     }
 

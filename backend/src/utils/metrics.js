@@ -1,6 +1,9 @@
 import os from 'os';
+import fs from 'fs/promises';
+import path from 'path';
 import { execSync } from 'child_process';
 import { createChildLogger } from './logger.js';
+import { config } from '../config/index.js';
 
 const log = createChildLogger('metrics');
 
@@ -168,6 +171,22 @@ export function getSystemMetrics() {
     },
     timestamp: new Date().toISOString(),
   };
+}
+
+export async function probeHlsManifest(slug, maxAgeMs = 30000) {
+  const filePath = path.join(config.streaming.hlsDir, slug, 'index.m3u8');
+
+  try {
+    const stat = await fs.stat(filePath);
+    const ageMs = Date.now() - stat.mtimeMs;
+    return {
+      alive: ageMs <= maxAgeMs,
+      age_ms: ageMs,
+      path: filePath,
+    };
+  } catch (err) {
+    return { alive: false, age_ms: null, error: err.code || err.message };
+  }
 }
 
 export async function probeStream(url, timeout = 10000) {

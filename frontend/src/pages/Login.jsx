@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getAuthErrorHint, getAuthErrorMessage } from '../utils/authErrors';
+import { setAuthPortal } from '../utils/authStorage';
 import { Radio, Tv, Shield } from 'lucide-react';
 
 export default function Login() {
@@ -12,6 +13,10 @@ export default function Login() {
   const [error, setError] = useState('');
   const [errorHint, setErrorHint] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setAuthPortal('admin');
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

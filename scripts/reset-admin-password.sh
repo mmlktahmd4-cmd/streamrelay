@@ -26,6 +26,7 @@ source .env
 set +a
 
 echo "مزامنة كلمة مرور admin من .env ..."
+docker compose build api worker
 docker compose up -d api worker
 for i in $(seq 1 30); do
   if docker compose exec -T api wget -qO- "http://127.0.0.1:3000/api/health" >/dev/null 2>&1; then

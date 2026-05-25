@@ -25,6 +25,20 @@ export function getQueue() {
 export async function setupQueueProcessors() {
   const queue = getQueue();
 
+  queue.process('start-channel', async (job) => {
+    const { channelId } = job.data;
+    log.info({ channelId }, 'Processing start-channel job');
+    const { startStream } = await import('./stream.service.js');
+    return startStream(channelId);
+  });
+
+  queue.process('stop-channel', async (job) => {
+    const { channelId, options = {} } = job.data;
+    log.info({ channelId }, 'Processing stop-channel job');
+    const { stopStream } = await import('./stream.service.js');
+    return stopStream(channelId, options);
+  });
+
   queue.process('restart-channel', async (job) => {
     const { channelId } = job.data;
     log.info({ channelId }, 'Processing restart-channel job');
@@ -86,6 +100,21 @@ export async function setupQueueProcessors() {
   });
 
   log.info('Queue processors registered');
+}
+
+export async function runStreamJob(name, data, timeoutMs = 180000) {
+  const queue = getQueue();
+  const job = await queue.add(name, data, {
+    removeOnComplete: true,
+    removeOnFail: 50,
+    timeout: timeoutMs,
+  });
+
+  try {
+    return await job.finished();
+  } catch (err) {
+    throw new Error(err?.message || `Stream job ${name} failed`);
+  }
 }
 
 export async function cancelChannelJobs(channelId) {

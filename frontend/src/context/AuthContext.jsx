@@ -1,7 +1,19 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import axios from 'axios';
 import { login as apiLogin, getMe, pingPresence } from '../api/client';
+import { clearAuthStorage, setAuthPortal } from '../utils/authStorage';
 
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 const AuthContext = createContext(null);
+
+async function refreshAccessToken() {
+  const refreshToken = localStorage.getItem('refresh_token');
+  if (!refreshToken) return null;
+
+  const { data } = await axios.post(`${API_BASE}/auth/refresh`, { refresh_token: refreshToken });
+  localStorage.setItem('access_token', data.access_token);
+  return data.access_token;
+}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -9,15 +21,31 @@ export function AuthProvider({ children }) {
 
   const loadUser = useCallback(async () => {
     const token = localStorage.getItem('access_token');
-    if (!token) {
+    const refreshToken = localStorage.getItem('refresh_token');
+
+    if (!token && !refreshToken) {
       setLoading(false);
       return;
     }
+
     try {
       const { data } = await getMe();
       setUser(data);
+      setAuthPortal(data.role);
     } catch {
-      localStorage.clear();
+      if (refreshToken) {
+        try {
+          await refreshAccessToken();
+          const { data } = await getMe();
+          setUser(data);
+          setAuthPortal(data.role);
+          return;
+        } catch {
+          /* fall through */
+        }
+      }
+      clearAuthStorage();
+      setUser(null);
     } finally {
       setLoading(false);
     }
@@ -39,6 +67,7 @@ export function AuthProvider({ children }) {
     const { data } = await apiLogin(username, password);
     localStorage.setItem('access_token', data.access_token);
     localStorage.setItem('refresh_token', data.refresh_token);
+    setAuthPortal(data.user.role);
     try {
       const { data: profile } = await getMe();
       setUser(profile);
@@ -50,7 +79,7 @@ export function AuthProvider({ children }) {
   };
 
   const logout = () => {
-    localStorage.clear();
+    clearAuthStorage();
     setUser(null);
   };
 
