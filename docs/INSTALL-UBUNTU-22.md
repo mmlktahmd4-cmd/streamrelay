@@ -213,6 +213,16 @@ sudo bash scripts/ubuntu-quick-install.sh
 sudo bash scripts/check-ports.sh
 ```
 
+### worker يظهر unhealthy (تحذير فقط)
+
+الـ worker لا يشغّل HTTP API — HEALTHCHECK الافتراضي في Dockerfile يفحص `/api/health` ويفشل رغم أن العامل يعمل.
+
+```bash
+docker compose logs worker --tail 20   # يجب أن ترى "Worker ready, processing jobs"
+sudo bash scripts/update-from-github.sh
+docker compose up -d --force-recreate worker
+```
+
 ### Nginx يعيد التشغيل (Restarting)
 
 ```bash

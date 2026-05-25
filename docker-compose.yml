@@ -69,6 +69,8 @@ services:
     container_name: sr-worker
     restart: unless-stopped
     command: ["node", "src/worker.js"]
+    healthcheck:
+      disable: true
     env_file: .env
     environment:
       POSTGRES_HOST: postgres
