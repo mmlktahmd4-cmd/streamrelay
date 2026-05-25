@@ -91,7 +91,7 @@ export const importM3USchema = z.object({
 
 export const paginationSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
+  limit: z.coerce.number().int().min(1).max(500).default(20),
 });
 
 export const mikrotikConfigSchema = z.object({
@@ -112,6 +112,30 @@ export const createCategorySchema = z.object({
 });
 
 export const updateCategorySchema = createCategorySchema.partial();
+
+export const bulkUpdateChannelsSchema = z.object({
+  ids: z.array(z.string().uuid()).optional(),
+  all: z.boolean().optional(),
+  updates: z.object({
+    category_id: z.string().uuid().nullable().optional(),
+    is_public: z.boolean().optional(),
+    auto_restart: z.boolean().optional(),
+  }),
+}).refine((data) => data.all || (data.ids && data.ids.length > 0), {
+  message: 'Provide ids or set all=true',
+});
+
+export const updateMovieSchema = z.object({
+  name: z.string().min(1).max(255).optional(),
+  description: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().max(1000).optional()
+  ),
+  poster_url: optionalUrl,
+  category_id: z.string().uuid().nullable().optional(),
+  is_public: z.boolean().optional(),
+  sort_order: z.number().int().optional(),
+});
 
 export function validate(schema) {
   return async (request, reply) => {

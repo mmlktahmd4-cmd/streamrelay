@@ -2,7 +2,7 @@ import * as channelService from '../services/channel.service.js';
 import { runStreamJob } from '../services/queue.service.js';
 import * as categoryService from '../services/category.service.js';
 import { generateSignedUrl } from '../utils/crypto.js';
-import { validate, createChannelSchema, updateChannelSchema, importM3USchema, paginationSchema } from '../middleware/validate.js';
+import { validate, createChannelSchema, updateChannelSchema, importM3USchema, paginationSchema, bulkUpdateChannelsSchema } from '../middleware/validate.js';
 import { requireMinRole } from '../middleware/auth.js';
 
 export default async function channelRoutes(fastify) {
@@ -31,6 +31,17 @@ export default async function channelRoutes(fastify) {
       categoryId: request.body.category_id,
       isPublic: request.body.is_public !== false,
     });
+  });
+
+  // Bulk update channels (must be before /:id)
+  fastify.post('/bulk-update', {
+    preHandler: [requireMinRole('operator'), validate(bulkUpdateChannelsSchema)],
+  }, async (request, reply) => {
+    try {
+      return await channelService.bulkUpdateChannels(request.body);
+    } catch (err) {
+      return reply.status(400).send({ error: err.message });
+    }
   });
 
   // Viewer playlist — local relay URLs only (must be before /:id)

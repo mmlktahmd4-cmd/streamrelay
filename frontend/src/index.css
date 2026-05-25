@@ -717,6 +717,46 @@
     color: #64748b;
   }
 
+  .viewer-sidebar {
+    background: rgba(0, 0, 0, 0.15);
+  }
+
+  .viewer-sidebar-link {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.65rem 0.75rem;
+    border-radius: 10px;
+    font-size: 0.875rem;
+    color: #94a3b8;
+    transition: all 0.2s;
+    text-align: right;
+  }
+
+  .viewer-sidebar-link:hover,
+  .viewer-sidebar-link.active {
+    background: rgba(45, 212, 191, 0.12);
+    color: #5eead4;
+  }
+
+  .viewer-chip {
+    flex-shrink: 0;
+    padding: 0.4rem 0.85rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #94a3b8;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(148, 163, 184, 0.15);
+  }
+
+  .viewer-chip.active {
+    color: #5eead4;
+    border-color: rgba(45, 212, 191, 0.35);
+    background: rgba(45, 212, 191, 0.12);
+  }
+
   .viewer-channel-card {
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(148, 163, 184, 0.12);

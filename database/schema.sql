@@ -137,6 +137,7 @@ CREATE TABLE movies (
     name            VARCHAR(255) NOT NULL,
     slug            VARCHAR(255) UNIQUE NOT NULL,
     description     TEXT,
+    poster_url      VARCHAR(512),
     category_id     UUID REFERENCES categories(id) ON DELETE SET NULL,
     file_path       TEXT NOT NULL,
     file_size       BIGINT,

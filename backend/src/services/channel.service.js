@@ -123,6 +123,43 @@ export async function updateChannel(id, data) {
   return result.rows[0] || null;
 }
 
+export async function bulkUpdateChannels({ ids, all, updates }) {
+  if (!updates || Object.keys(updates).length === 0) {
+    throw new Error('No updates provided');
+  }
+
+  const allowed = ['category_id', 'is_public', 'auto_restart'];
+  const sets = [];
+  const values = [];
+  let idx = 1;
+
+  for (const key of allowed) {
+    if (updates[key] !== undefined) {
+      sets.push(`${key} = $${idx++}`);
+      values.push(updates[key]);
+    }
+  }
+
+  if (sets.length === 0) {
+    throw new Error('No valid updates provided');
+  }
+
+  sets.push('updated_at = NOW()');
+
+  let where = 'is_active = true';
+  if (!all) {
+    where += ` AND id = ANY($${idx++}::uuid[])`;
+    values.push(ids);
+  }
+
+  const result = await query(
+    `UPDATE channels SET ${sets.join(', ')} WHERE ${where} RETURNING id`,
+    values
+  );
+
+  return { updated: result.rowCount, ids: result.rows.map((r) => r.id) };
+}
+
 export async function deleteChannel(id) {
   const { cancelChannelJobs } = await import('./queue.service.js');
   await cancelChannelJobs(id);

@@ -1,7 +1,28 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { getChannel, createChannel, updateChannel, getCategories } from '../api/client';
-import { ArrowRight } from 'lucide-react';
+import {
+  getChannel,
+  createChannel,
+  updateChannel,
+  getCategoriesFull,
+  uploadMovie,
+  updateMovie,
+} from '../api/client';
+import { ArrowRight, Film, Radio } from 'lucide-react';
+
+const LIVE_DEFAULT = {
+  name: '',
+  source_type: 'hls',
+  source_url: '',
+  backup_source_url: '',
+  output_format: 'hls',
+  category_id: '',
+  transcode_enabled: false,
+  auto_restart: true,
+  is_public: true,
+  description: '',
+  logo_url: '',
+};
 
 export default function ChannelForm() {
   const { id } = useParams();
@@ -9,27 +30,41 @@ export default function ChannelForm() {
   const isEdit = Boolean(id);
 
   const [categories, setCategories] = useState([]);
+  const [contentType, setContentType] = useState('live');
   const [loading, setLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [movieFile, setMovieFile] = useState(null);
   const [error, setError] = useState('');
-  const [form, setForm] = useState({
-    name: '', source_type: 'hls', source_url: '', backup_source_url: '',
-    output_format: 'hls', category_id: '', transcode_enabled: false,
-    auto_restart: true, is_public: true, description: '',
-  });
+  const [form, setForm] = useState({ ...LIVE_DEFAULT });
 
   useEffect(() => {
-    getCategories().then(({ data }) => setCategories(data)).catch(() => {});
+    getCategoriesFull().then(({ data }) => setCategories(data || [])).catch(() => {});
     if (isEdit) {
       getChannel(id).then(({ data }) => {
+        const isMovie = data.content_type === 'vod';
+        setContentType(isMovie ? 'movie' : 'live');
         setForm({
-          name: data.name, source_type: data.source_type, source_url: data.source_url,
-          backup_source_url: data.backup_source_url || '', output_format: data.output_format,
-          category_id: data.category_id || '', transcode_enabled: data.transcode_enabled,
-          auto_restart: data.auto_restart, is_public: data.is_public, description: data.description || '',
+          name: data.name || '',
+          source_type: data.source_type || 'hls',
+          source_url: data.source_url || '',
+          backup_source_url: data.backup_source_url || '',
+          output_format: data.output_format || 'hls',
+          category_id: data.category_id || '',
+          transcode_enabled: data.transcode_enabled || false,
+          auto_restart: data.auto_restart !== false,
+          is_public: data.is_public !== false,
+          description: data.description || '',
+          logo_url: data.logo_url || data.poster_url || '',
         });
       });
     }
   }, [id, isEdit]);
+
+  const filteredCategories = categories.filter((cat) => {
+    const type = cat.section_type || 'mixed';
+    if (contentType === 'movie') return type === 'mixed' || type === 'movies';
+    return type === 'mixed' || type === 'live';
+  });
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -40,13 +75,44 @@ export default function ChannelForm() {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setUploadProgress(0);
+
     try {
-      const payload = { ...form };
-      if (!payload.category_id) delete payload.category_id;
-      if (!payload.backup_source_url?.trim()) delete payload.backup_source_url;
-      if (!payload.description?.trim()) delete payload.description;
-      if (isEdit) await updateChannel(id, payload);
-      else await createChannel(payload);
+      if (contentType === 'movie') {
+        if (!form.category_id) {
+          setError('اختر قسم للفيلم');
+          return;
+        }
+        if (!isEdit && !movieFile) {
+          setError('اختر ملف الفيلم (MP4, MKV, ...)');
+          return;
+        }
+
+        const moviePayload = {
+          name: form.name,
+          description: form.description || undefined,
+          category_id: form.category_id,
+          is_public: form.is_public,
+          poster_url: form.logo_url || undefined,
+        };
+
+        if (isEdit) {
+          await updateMovie(id, moviePayload);
+        } else {
+          await uploadMovie(form.category_id, movieFile, {
+            ...moviePayload,
+            onProgress: setUploadProgress,
+          });
+        }
+      } else {
+        const payload = { ...form };
+        if (!payload.category_id) delete payload.category_id;
+        if (!payload.backup_source_url?.trim()) delete payload.backup_source_url;
+        if (!payload.description?.trim()) delete payload.description;
+        if (!payload.logo_url?.trim()) delete payload.logo_url;
+        if (isEdit) await updateChannel(id, payload);
+        else await createChannel(payload);
+      }
       navigate('/channels');
     } catch (err) {
       const details = err.response?.data?.details;
@@ -64,53 +130,121 @@ export default function ChannelForm() {
         <ArrowRight className="w-4 h-4" /> العودة للقنوات
       </button>
 
-      <h1 className="page-title mb-6">{isEdit ? 'تعديل القناة' : 'إضافة قناة جديدة'}</h1>
+      <h1 className="page-title mb-6">{isEdit ? 'تعديل المحتوى' : 'إضافة قناة / فيلم'}</h1>
 
       <form onSubmit={handleSubmit} className="card space-y-4">
         {error && <div className="admin-alert admin-alert-error">{error}</div>}
 
+        {!isEdit && (
+          <div>
+            <label className="label">نوع المحتوى *</label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setContentType('live')}
+                className={`flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold transition ${contentType === 'live' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-600'}`}
+              >
+                <Radio className="w-4 h-4" /> بث مباشر
+              </button>
+              <button
+                type="button"
+                onClick={() => setContentType('movie')}
+                className={`flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold transition ${contentType === 'movie' ? 'border-violet-500 bg-violet-50 text-violet-700' : 'border-slate-200 text-slate-600'}`}
+              >
+                <Film className="w-4 h-4" /> فيلم
+              </button>
+            </div>
+          </div>
+        )}
+
         <div>
-          <label className="label">اسم القناة *</label>
+          <label className="label">{contentType === 'movie' ? 'اسم الفيلم *' : 'اسم القناة *'}</label>
           <input className="input" name="name" value={form.name} onChange={handleChange} required />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="label">نوع المصدر</label>
-            <select className="input" name="source_type" value={form.source_type} onChange={handleChange}>
-              <option value="hls">HLS (.m3u8)</option>
-              <option value="http">HTTP Stream</option>
-              <option value="rtmp">RTMP</option>
-              <option value="udp">UDP</option>
-              <option value="m3u">M3U</option>
-            </select>
-          </div>
-          <div>
-            <label className="label">صيغة الإخراج</label>
-            <select className="input" name="output_format" value={form.output_format} onChange={handleChange}>
-              <option value="hls">HLS</option>
-              <option value="mpegts">MPEGTS</option>
-              <option value="rtmp">RTMP</option>
-              <option value="relay">Internal Relay</option>
-            </select>
-          </div>
+        <div>
+          <label className="label">رابط الصورة (اختياري)</label>
+          <input className="input" name="logo_url" value={form.logo_url} onChange={handleChange} dir="ltr" placeholder="https://example.com/logo.png" />
+          {form.logo_url && (
+            <img src={form.logo_url} alt="" className="mt-2 h-16 w-16 rounded-lg object-cover border border-slate-200" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+          )}
         </div>
 
-        <div>
-          <label className="label">رابط المصدر *</label>
-          <input className="input" name="source_url" value={form.source_url} onChange={handleChange} required dir="ltr" placeholder="https://example.com/stream.m3u8" />
-        </div>
+        {contentType === 'live' ? (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="label">نوع المصدر</label>
+                <select className="input" name="source_type" value={form.source_type} onChange={handleChange}>
+                  <option value="hls">HLS (.m3u8)</option>
+                  <option value="http">HTTP Stream</option>
+                  <option value="rtmp">RTMP</option>
+                  <option value="udp">UDP</option>
+                  <option value="m3u">M3U</option>
+                </select>
+              </div>
+              <div>
+                <label className="label">صيغة الإخراج</label>
+                <select className="input" name="output_format" value={form.output_format} onChange={handleChange}>
+                  <option value="hls">HLS</option>
+                  <option value="mpegts">MPEGTS</option>
+                  <option value="rtmp">RTMP</option>
+                  <option value="relay">Internal Relay</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="label">رابط المصدر *</label>
+              <input className="input" name="source_url" value={form.source_url} onChange={handleChange} required dir="ltr" placeholder="https://example.com/stream.m3u8" />
+            </div>
+
+            <div>
+              <label className="label">رابط احتياطي</label>
+              <input className="input" name="backup_source_url" value={form.backup_source_url} onChange={handleChange} dir="ltr" />
+            </div>
+
+            <div className="flex flex-wrap gap-5">
+              <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-600">
+                <input type="checkbox" name="auto_restart" checked={form.auto_restart} onChange={handleChange} className="rounded border-slate-300 text-blue-600" />
+                إعادة تشغيل تلقائي
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-600">
+                <input type="checkbox" name="transcode_enabled" checked={form.transcode_enabled} onChange={handleChange} className="rounded border-slate-300 text-blue-600" />
+                تفعيل Transcoding
+              </label>
+            </div>
+          </>
+        ) : (
+          !isEdit && (
+            <div>
+              <label className="label">ملف الفيلم *</label>
+              <input
+                type="file"
+                className="input"
+                accept="video/mp4,video/x-matroska,video/quicktime,video/webm,video/x-msvideo,.mp4,.mkv,.mov,.webm,.avi,.m4v"
+                onChange={(e) => setMovieFile(e.target.files?.[0] || null)}
+              />
+              {uploadProgress > 0 && uploadProgress < 100 && (
+                <div className="mt-2">
+                  <div className="h-2 rounded-full bg-slate-200 overflow-hidden">
+                    <div className="h-full bg-violet-500 transition-all" style={{ width: `${uploadProgress}%` }} />
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">جاري الرفع: {uploadProgress}%</p>
+                </div>
+              )}
+              <p className="text-xs text-slate-500 mt-1">MP4, MKV, MOV, WEBM, AVI — حتى 4GB</p>
+            </div>
+          )
+        )}
 
         <div>
-          <label className="label">رابط احتياطي</label>
-          <input className="input" name="backup_source_url" value={form.backup_source_url} onChange={handleChange} dir="ltr" />
-        </div>
-
-        <div>
-          <label className="label">التصنيف</label>
-          <select className="input" name="category_id" value={form.category_id} onChange={handleChange}>
-            <option value="">بدون تصنيف</option>
-            {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          <label className="label">القسم *</label>
+          <select className="input" name="category_id" value={form.category_id} onChange={handleChange} required={contentType === 'movie'}>
+            <option value="">{contentType === 'movie' ? 'اختر قسم...' : 'بدون تصنيف'}</option>
+            {filteredCategories.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
           </select>
         </div>
 
@@ -119,28 +253,20 @@ export default function ChannelForm() {
           <textarea className="input" name="description" value={form.description} onChange={handleChange} rows={2} />
         </div>
 
-        <div className="flex flex-wrap gap-5">
-          <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-600">
-            <input type="checkbox" name="auto_restart" checked={form.auto_restart} onChange={handleChange} className="rounded border-slate-300 text-blue-600" />
-            إعادة تشغيل تلقائي
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-600">
-            <input type="checkbox" name="transcode_enabled" checked={form.transcode_enabled} onChange={handleChange} className="rounded border-slate-300 text-blue-600" />
-            تفعيل Transcoding
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-600">
-            <input type="checkbox" name="is_public" checked={form.is_public} onChange={handleChange} className="rounded border-slate-300 text-blue-600" />
-            قناة عامة للمشاهدين
-          </label>
-        </div>
+        <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-600">
+          <input type="checkbox" name="is_public" checked={form.is_public} onChange={handleChange} className="rounded border-slate-300 text-blue-600" />
+          {contentType === 'movie' ? 'فيلم عام للمشاهدين' : 'قناة عامة للمشاهدين'}
+        </label>
 
-        <div className="admin-alert admin-alert-info text-sm">
-          بعد التشغيل، يظهر <strong>رابط البث الداخلي</strong> في صفحة القنوات — يمكن نسخه للمشاهدين أو VLC.
-        </div>
+        {contentType === 'live' && (
+          <div className="admin-alert admin-alert-info text-sm">
+            بعد التشغيل، يظهر <strong>رابط البث الداخلي</strong> في صفحة القنوات.
+          </div>
+        )}
 
         <div className="flex gap-3 pt-2">
           <button type="submit" className="btn btn-primary" disabled={loading}>
-            {loading ? 'جاري الحفظ...' : isEdit ? 'حفظ التعديلات' : 'إنشاء القناة'}
+            {loading ? (uploadProgress > 0 ? `رفع ${uploadProgress}%...` : 'جاري الحفظ...') : isEdit ? 'حفظ التعديلات' : contentType === 'movie' ? 'رفع الفيلم' : 'إنشاء القناة'}
           </button>
           <button type="button" className="btn btn-secondary" onClick={() => navigate('/channels')}>إلغاء</button>
         </div>

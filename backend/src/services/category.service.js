@@ -91,14 +91,15 @@ export async function getCategoryContents(id, { publicOnly = false } = {}) {
     ),
     query(
       `SELECT id, name, slug, 'vod' AS content_type, 'running' AS status, is_public,
-              file_size, mime_type, duration_seconds, description, sort_order, created_at
+              file_size, mime_type, duration_seconds, description, poster_url, sort_order, created_at
        FROM movies WHERE ${movieConditions.join(' AND ')}
        ORDER BY sort_order, name`,
       [id]
     ).catch(() => ({ rows: [] })),
   ]);
 
-  const items = [...channels.rows, ...movies.rows].sort((a, b) => {
+  const movieItems = movies.rows.map((m) => ({ ...m, logo_url: m.poster_url || null }));
+  const items = [...channels.rows, ...movieItems].sort((a, b) => {
     if (a.content_type !== b.content_type) return a.content_type === 'live' ? -1 : 1;
     return (a.sort_order || 0) - (b.sort_order || 0) || a.name.localeCompare(b.name);
   });
@@ -173,7 +174,7 @@ export async function deleteCategory(id) {
   await query('UPDATE movies SET category_id = NULL WHERE category_id = $1', [id]).catch(() => {});
 }
 
-export async function uploadMovie({ categoryId, name, description, isPublic, fileStream, filename, mimetype }) {
+export async function uploadMovie({ categoryId, name, description, isPublic, posterUrl, fileStream, filename, mimetype }) {
   ensureVodDir();
 
   if (categoryId) {
@@ -202,17 +203,52 @@ export async function uploadMovie({ categoryId, name, description, isPublic, fil
   const outputUrl = `${baseUrl}/vod/${storedName}`;
 
   const result = await query(
-    `INSERT INTO movies (name, slug, description, category_id, file_path, file_size, mime_type, output_url, is_public)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-    [name, slug, description || null, categoryId || null, filePath, stat.size, mime, outputUrl, isPublic !== false]
+    `INSERT INTO movies (name, slug, description, category_id, file_path, file_size, mime_type, output_url, poster_url, is_public)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+    [name, slug, description || null, categoryId || null, filePath, stat.size, mime, outputUrl, posterUrl || null, isPublic !== false]
   );
 
-  return { ...result.rows[0], content_type: 'vod', status: 'running' };
+  return { ...result.rows[0], content_type: 'vod', status: 'running', logo_url: posterUrl || null };
+}
+
+export async function updateMovie(id, data) {
+  const allowed = ['name', 'description', 'poster_url', 'category_id', 'is_public', 'sort_order'];
+  const sets = [];
+  const values = [];
+  let idx = 1;
+
+  for (const key of allowed) {
+    if (data[key] !== undefined) {
+      sets.push(`${key} = $${idx++}`);
+      values.push(data[key]);
+    }
+  }
+
+  if (data.name) {
+    sets.push(`slug = $${idx++}`);
+    values.push(generateSlug(data.name));
+  }
+
+  if (sets.length === 0) return getMovieById(id);
+
+  sets.push('updated_at = NOW()');
+  values.push(id);
+
+  const result = await query(
+    `UPDATE movies SET ${sets.join(', ')} WHERE id = $${idx} AND is_active = true RETURNING *`,
+    values
+  );
+
+  const row = result.rows[0] || null;
+  if (!row) return null;
+  return { ...row, content_type: 'vod', status: 'running', logo_url: row.poster_url || null };
 }
 
 export async function getMovieById(id) {
   const result = await query('SELECT * FROM movies WHERE id = $1 AND is_active = true', [id]);
-  return result.rows[0] || null;
+  const row = result.rows[0] || null;
+  if (!row) return null;
+  return { ...row, content_type: 'vod', status: 'running', logo_url: row.poster_url || null };
 }
 
 export async function deleteMovie(id) {
@@ -237,11 +273,14 @@ export async function listPublicMovies() {
   try {
     const result = await query(
       `SELECT id, name, slug, 'vod' AS content_type, 'running' AS status, is_public,
-              category_id, file_size, mime_type, description, sort_order, created_at
+              category_id, file_size, mime_type, description, poster_url, sort_order, created_at
        FROM movies WHERE is_active = true AND is_public = true
        ORDER BY sort_order, name`
     );
-    return result.rows;
+    return result.rows.map((row) => ({
+      ...row,
+      logo_url: row.poster_url || null,
+    }));
   } catch {
     return [];
   }

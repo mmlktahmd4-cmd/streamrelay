@@ -1,6 +1,6 @@
 import * as categoryService from '../services/category.service.js';
 import { requireMinRole } from '../middleware/auth.js';
-import { validate, createCategorySchema, updateCategorySchema } from '../middleware/validate.js';
+import { validate, createCategorySchema, updateCategorySchema, updateMovieSchema } from '../middleware/validate.js';
 
 export default async function categoryRoutes(fastify) {
   fastify.addHook('preHandler', fastify.authenticate);
@@ -48,6 +48,7 @@ export default async function categoryRoutes(fastify) {
       let name = '';
       let description = '';
       let isPublic = true;
+      let posterUrl = '';
       let filePart = null;
 
       for await (const part of parts) {
@@ -59,6 +60,8 @@ export default async function categoryRoutes(fastify) {
           description = part.value;
         } else if (part.fieldname === 'is_public') {
           isPublic = part.value !== 'false';
+        } else if (part.fieldname === 'poster_url') {
+          posterUrl = part.value;
         }
       }
 
@@ -75,6 +78,7 @@ export default async function categoryRoutes(fastify) {
         name,
         description,
         isPublic,
+        posterUrl: posterUrl || null,
         fileStream: filePart.file,
         filename: filePart.filename,
         mimetype: filePart.mimetype,
@@ -85,6 +89,14 @@ export default async function categoryRoutes(fastify) {
     } catch (err) {
       return reply.status(500).send({ error: err.message });
     }
+  });
+
+  fastify.put('/movies/:movieId', {
+    preHandler: [requireMinRole('operator'), validate(updateMovieSchema)],
+  }, async (request, reply) => {
+    const movie = await categoryService.updateMovie(request.params.movieId, request.body);
+    if (!movie) return reply.status(404).send({ error: 'Movie not found' });
+    return movie;
   });
 
   fastify.delete('/movies/:movieId', {

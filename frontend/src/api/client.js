@@ -88,6 +88,7 @@ export const importM3U = (content, options = {}) =>
   }, { timeout: 120000 });
 
 export const duplicateChannel = (id) => api.post(`/channels/${id}/duplicate`, {});
+export const bulkUpdateChannels = (data) => api.post('/channels/bulk-update', data);
 export const getCategories = () => api.get('/channels/meta/categories');
 export const getChannelLogs = (id, params) => api.get(`/channels/${id}/logs`, { params });
 
@@ -98,12 +99,14 @@ export const createCategory = (data) => api.post('/categories', data);
 export const updateCategory = (id, data) => api.put(`/categories/${id}`, data);
 export const deleteCategory = (id) => api.delete(`/categories/${id}`);
 export const deleteMovie = (id) => api.delete(`/categories/movies/${id}`);
+export const updateMovie = (id, data) => api.put(`/categories/movies/${id}`, data);
 
-export const uploadMovie = (categoryId, file, { name, description, is_public, onProgress } = {}) => {
+export const uploadMovie = (categoryId, file, { name, description, is_public, poster_url, onProgress } = {}) => {
   const form = new FormData();
   form.append('file', file);
   if (name) form.append('name', name);
   if (description) form.append('description', description);
+  if (poster_url) form.append('poster_url', poster_url);
   form.append('is_public', is_public !== false ? 'true' : 'false');
 
   return api.post(`/categories/${categoryId}/movies/upload`, form, {

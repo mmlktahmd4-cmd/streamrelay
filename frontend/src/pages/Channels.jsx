@@ -1,33 +1,98 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { getChannels, startChannel, stopChannel, restartChannel, deleteChannel, downloadViewerPlaylist, duplicateChannel } from '../api/client';
+import {
+  getChannels,
+  startChannel,
+  stopChannel,
+  restartChannel,
+  deleteChannel,
+  downloadViewerPlaylist,
+  duplicateChannel,
+  bulkUpdateChannels,
+  getCategoriesFull,
+} from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import StatusBadge from '../components/StatusBadge';
 import RelayUrlCopy from '../components/ui/RelayUrlCopy';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import ChannelImportPanel from '../components/admin/ChannelImportPanel';
-import { Plus, Play, Square, RotateCcw, Trash2, Eye, Search, Download, Pencil, Radio, Copy } from 'lucide-react';
+import { Plus, Play, Square, RotateCcw, Trash2, Eye, Search, Download, Pencil, Radio, Copy, CheckSquare } from 'lucide-react';
 
 export default function Channels() {
   const { isOperator } = useAuth();
   const [channels, setChannels] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [actionLoading, setActionLoading] = useState(null);
+  const [selected, setSelected] = useState(new Set());
+  const [bulkCategory, setBulkCategory] = useState('');
+  const [bulkPublic, setBulkPublic] = useState('');
+  const [bulkLoading, setBulkLoading] = useState(false);
 
   const fetchChannels = async () => {
     try {
-      const { data } = await getChannels({ limit: 100, search: search || undefined });
+      const { data } = await getChannels({ limit: 500, search: search || undefined });
       setChannels(data.channels || []);
     } catch { /* ignore */ }
     setLoading(false);
   };
 
   useEffect(() => {
+    getCategoriesFull().then(({ data }) => setCategories(data || [])).catch(() => {});
+  }, []);
+
+  useEffect(() => {
     fetchChannels();
     const interval = setInterval(fetchChannels, 3000);
     return () => clearInterval(interval);
   }, [search]);
+
+  const toggleSelect = (id) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selected.size === channels.length) setSelected(new Set());
+    else setSelected(new Set(channels.map((ch) => ch.id)));
+  };
+
+  const applyBulk = async (all = false) => {
+    const updates = {};
+    if (bulkCategory === '__none__') updates.category_id = null;
+    else if (bulkCategory) updates.category_id = bulkCategory;
+    if (bulkPublic === 'true') updates.is_public = true;
+    if (bulkPublic === 'false') updates.is_public = false;
+
+    if (Object.keys(updates).length === 0) {
+      alert('اختر تصنيف أو حالة الظهور للتحديث');
+      return;
+    }
+    if (!all && selected.size === 0) {
+      alert('حدد قنوات أو استخدم "تطبيق على الكل"');
+      return;
+    }
+
+    setBulkLoading(true);
+    try {
+      const payload = all
+        ? { all: true, updates }
+        : { ids: [...selected], updates };
+      const { data } = await bulkUpdateChannels(payload);
+      alert(`تم تحديث ${data.updated} قناة`);
+      setSelected(new Set());
+      await fetchChannels();
+    } catch (err) {
+      alert(err.response?.data?.error || 'فشل التحديث');
+    } finally {
+      setBulkLoading(false);
+    }
+  };
 
   const handleAction = async (id, action) => {
     setActionLoading(id);
@@ -65,12 +130,44 @@ export default function Channels() {
             <>
               <ChannelImportPanel onDone={fetchChannels} />
               <Link to="/channels/new" className="btn btn-primary btn-sm whitespace-nowrap">
-                <Plus className="w-4 h-4" /> إضافة قناة
+                <Plus className="w-4 h-4" /> إضافة قناة / فيلم
               </Link>
             </>
           )}
         </div>
       </div>
+
+      {isOperator && channels.length > 0 && (
+        <div className="card mb-4 p-4 flex flex-col lg:flex-row lg:items-end gap-3">
+          <div className="flex items-center gap-2 text-sm text-slate-600">
+            <CheckSquare className="w-4 h-4" />
+            <button type="button" className="underline" onClick={toggleSelectAll}>
+              {selected.size === channels.length ? 'إلغاء التحديد' : 'تحديد الكل'}
+            </button>
+            <span className="text-slate-400">({selected.size} محدد)</span>
+          </div>
+          <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <select className="input py-2 text-sm" value={bulkCategory} onChange={(e) => setBulkCategory(e.target.value)}>
+              <option value="">— تغيير القسم —</option>
+              <option value="__none__">بدون قسم</option>
+              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <select className="input py-2 text-sm" value={bulkPublic} onChange={(e) => setBulkPublic(e.target.value)}>
+              <option value="">— الظهور —</option>
+              <option value="true">عامة للمشاهدين</option>
+              <option value="false">خاصة</option>
+            </select>
+          </div>
+          <div className="flex gap-2">
+            <button type="button" className="btn btn-secondary btn-sm" disabled={bulkLoading} onClick={() => applyBulk(false)}>
+              تطبيق على المحدد
+            </button>
+            <button type="button" className="btn btn-primary btn-sm" disabled={bulkLoading} onClick={() => applyBulk(true)}>
+              تطبيق على كل القنوات
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="admin-alert admin-alert-info mb-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-sm">
         <div className="flex items-center gap-2">
@@ -92,7 +189,7 @@ export default function Channels() {
           <p className="text-slate-500 text-sm">لا توجد قنوات</p>
           {isOperator && (
             <Link to="/channels/new" className="btn btn-primary btn-sm mt-4 inline-flex">
-              <Plus className="w-4 h-4" /> إضافة قناة
+              <Plus className="w-4 h-4" /> إضافة قناة / فيلم
             </Link>
           )}
         </div>
@@ -101,6 +198,7 @@ export default function Channels() {
           <table className="admin-table admin-channel-table">
             <thead>
               <tr>
+                {isOperator && <th className="w-8" />}
                 <th>القناة</th>
                 <th className="hidden md:table-cell">النوع</th>
                 <th>الحالة</th>
@@ -111,12 +209,28 @@ export default function Channels() {
             <tbody>
               {channels.map((ch) => (
                 <tr key={ch.id} className={actionLoading === ch.id ? 'opacity-60' : ''}>
+                  {isOperator && (
+                    <td>
+                      <input type="checkbox" checked={selected.has(ch.id)} onChange={() => toggleSelect(ch.id)} className="rounded border-slate-300" />
+                    </td>
+                  )}
                   <td>
-                    <p className="channel-name">{ch.name}</p>
-                    <p className="channel-slug">{ch.slug}</p>
-                    {ch.category_name && (
-                      <span className="admin-tag mt-1 inline-block text-[10px] py-0">{ch.category_name}</span>
-                    )}
+                    <div className="flex items-center gap-3">
+                      {ch.logo_url ? (
+                        <img src={ch.logo_url} alt="" className="w-10 h-10 rounded-lg object-cover border border-slate-200 shrink-0" />
+                      ) : (
+                        <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+                          <Radio className="w-4 h-4 text-slate-400" />
+                        </div>
+                      )}
+                      <div>
+                        <p className="channel-name">{ch.name}</p>
+                        <p className="channel-slug">{ch.slug}</p>
+                        {ch.category_name && (
+                          <span className="admin-tag mt-1 inline-block text-[10px] py-0">{ch.category_name}</span>
+                        )}
+                      </div>
+                    </div>
                   </td>
                   <td className="hidden md:table-cell">
                     <span className="admin-tag text-[10px] py-0">{ch.source_type?.toUpperCase()}</span>

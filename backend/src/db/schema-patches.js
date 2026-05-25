@@ -37,6 +37,13 @@ const PATCHES = [
       CREATE INDEX IF NOT EXISTS idx_movies_slug ON movies(slug);
     `,
   },
+  {
+    id: '006_movies_poster_url',
+    sql: `
+      ALTER TABLE movies ADD COLUMN IF NOT EXISTS poster_url VARCHAR(512);
+    `,
+    optional: true,
+  },
 ];
 
 export async function runSchemaPatches() {
