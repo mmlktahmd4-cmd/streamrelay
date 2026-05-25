@@ -33,8 +33,9 @@ chmod +x scripts/*.sh 2>/dev/null || true
 
 echo ""
 echo "=== git pull ==="
-git fetch origin
-git pull --ff-only origin "$(git branch --show-current)"
+# shellcheck source=lib/network.sh
+source "$INSTALL_DIR/scripts/lib/network.sh"
+sync_install_repo "$INSTALL_DIR" "$(git branch --show-current)"
 
 echo ""
 echo "=== تطبيق التحديث ==="

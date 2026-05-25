@@ -8,8 +8,23 @@ set -euo pipefail
 INSTALL_DIR="${INSTALL_DIR:-/opt/streamrelay}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-INSTALL_SCRIPT_VERSION="2026.05.26-awkfix3"
+INSTALL_SCRIPT_VERSION="2026.05.26-awkfix4"
 chmod +x "${SCRIPT_DIR}"/*.sh 2>/dev/null || true
+
+load_network_lib() {
+  local lib="${1:?}"
+  if [ ! -f "$lib" ]; then
+    echo "خطأ: ملف network.sh غير موجود: $lib"
+    echo "نفّذ: sudo bash scripts/install-from-github.sh"
+    exit 1
+  fi
+  # shellcheck source=lib/network.sh
+  source "$lib"
+  if ! declare -F ip_to_subnet >/dev/null 2>&1; then
+    echo "خطأ: ip_to_subnet غير معرّف في $lib"
+    exit 1
+  fi
+}
 
 require_modern_scripts() {
   if [ ! -f "${SCRIPT_DIR}/lib/network.sh" ]; then
@@ -27,7 +42,7 @@ require_modern_scripts() {
       fi
       echo "جاري git pull..."
       export STREAMRELAY_AWKFIX_PULL=1
-      git -C "${INSTALL_DIR}" pull --ff-only origin main
+      sync_install_repo "${INSTALL_DIR}" main
       exec bash "${INSTALL_DIR}/scripts/ubuntu-quick-install.sh" "$@"
     fi
     echo "نفّذ: sudo git clone https://github.com/mmlktahmd4-cmd/streamrelay.git ${INSTALL_DIR}"
@@ -35,24 +50,8 @@ require_modern_scripts() {
   fi
 }
 
-require_modern_scripts
-
-load_network_lib() {
-  local lib="${1:?}"
-  if [ ! -f "$lib" ]; then
-    echo "خطأ: ملف network.sh غير موجود: $lib"
-    echo "نفّذ: sudo bash scripts/install-from-github.sh"
-    exit 1
-  fi
-  # shellcheck source=lib/network.sh
-  source "$lib"
-  if ! declare -F ip_to_subnet >/dev/null 2>&1; then
-    echo "خطأ: ip_to_subnet غير معرّف في $lib"
-    exit 1
-  fi
-}
-
 load_network_lib "${SCRIPT_DIR}/lib/network.sh"
+require_modern_scripts
 
 port_in_use() {
   local port="$1"
@@ -141,7 +140,7 @@ mkdir -p "$INSTALL_DIR"
 if [ "$SOURCE_DIR" != "$INSTALL_DIR" ]; then
   if [ -d "$INSTALL_DIR/.git" ]; then
     echo "      git موجود في $INSTALL_DIR — تخطي rsync (لا نستبدل بنسخة قديمة)"
-    git -C "$INSTALL_DIR" pull --ff-only origin main 2>/dev/null || true
+    sync_install_repo "$INSTALL_DIR" main 2>/dev/null || true
   else
     rsync -a --delete \
     --exclude node_modules \
@@ -168,8 +167,7 @@ if [ "$SOURCE_DIR" != "$INSTALL_DIR" ] && [ -f "$INSTALL_DIR/scripts/ubuntu-quic
 fi
 
 if [ -d .git ]; then
-  git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
-  git pull --ff-only origin main 2>/dev/null || git pull --ff-only 2>/dev/null || true
+  sync_install_repo "$INSTALL_DIR" main 2>/dev/null || true
 fi
 
 load_network_lib "$INSTALL_DIR/scripts/lib/network.sh"

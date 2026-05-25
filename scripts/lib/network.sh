@@ -13,6 +13,32 @@ has_legacy_awk_subnet() {
   return 1
 }
 
+# مزامنة مجلد التثبيت مع GitHub — يتجاهل تعديلات محلية على السكربتات
+sync_install_repo() {
+  local dir="${1:-/opt/streamrelay}"
+  local branch="${2:-main}"
+
+  [ -d "$dir/.git" ] || return 0
+
+  git config --global --add safe.directory "$dir" 2>/dev/null || true
+  git -C "$dir" fetch origin "$branch" 2>/dev/null || {
+    echo "تحذير: git fetch فشل في $dir"
+    return 1
+  }
+
+  if ! git -C "$dir" rev-parse "origin/$branch" &>/dev/null; then
+    echo "تحذير: origin/$branch غير موجود"
+    return 1
+  fi
+
+  if [ -n "$(git -C "$dir" status --porcelain 2>/dev/null)" ]; then
+    echo "      تجاهل تعديلات محلية — مزامنة مع GitHub..."
+    git -C "$dir" reset --hard "origin/$branch"
+  elif ! git -C "$dir" merge --ff-only "origin/$branch" 2>/dev/null; then
+    git -C "$dir" reset --hard "origin/$branch"
+  fi
+}
+
 # أول IPv4 مناسب: يفضّل 192.168.x ثم يتجنب 127 و 172.16-31 (Docker/VPN)
 detect_server_ip() {
   local ip="" candidate
