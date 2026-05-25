@@ -1,4 +1,6 @@
-services:  postgres:
+services:
+
+  postgres:
     image: postgres:16-alpine
     container_name: sr-postgres
     restart: unless-stopped
