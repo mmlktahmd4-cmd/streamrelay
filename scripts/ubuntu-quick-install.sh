@@ -8,7 +8,44 @@ set -euo pipefail
 INSTALL_DIR="${INSTALL_DIR:-/opt/streamrelay}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-INSTALL_SCRIPT_VERSION="2026.05.26-awkfix5"
+
+# ── bootstrap: مزامنة GitHub قبل أي خطوة (easy-install يفعل هذا عبر install-from-github) ──
+if [ -f "${SCRIPT_DIR}/lib/network.sh" ]; then
+  # shellcheck source=lib/network.sh
+  source "${SCRIPT_DIR}/lib/network.sh"
+fi
+
+if [ "$SOURCE_DIR" = "$INSTALL_DIR" ] && [ ! -d "$INSTALL_DIR/.git" ]; then
+  if [ -f "$INSTALL_DIR/scripts/ubuntu-quick-install.sh" ] || [ -n "$(ls -A "$INSTALL_DIR" 2>/dev/null)" ]; then
+    echo "=============================================="
+    echo "  خطأ: git clone لم يستبدل المجلد القديم"
+    echo "=============================================="
+    echo ""
+    echo "  git clone يفشل إذا /opt/streamrelay موجود مسبقاً."
+    echo "  الحل — احذف ثم ثبّت:"
+    echo ""
+    echo "    sudo rm -rf /opt/streamrelay"
+    echo "    curl -fsSL https://raw.githubusercontent.com/mmlktahmd4-cmd/streamrelay/main/scripts/easy-install.sh | sudo bash"
+    echo ""
+    echo "  أو:"
+    echo ""
+    echo "    sudo rm -rf /opt/streamrelay"
+    echo "    sudo git clone https://github.com/mmlktahmd4-cmd/streamrelay.git /opt/streamrelay"
+    echo "    cd /opt/streamrelay && sudo bash scripts/ubuntu-quick-install.sh"
+    echo ""
+    exit 1
+  fi
+fi
+
+if [ -d "$INSTALL_DIR/.git" ] && [ "${STREAMRELAY_REPO_SYNCED:-}" != "1" ]; then
+  export STREAMRELAY_REPO_SYNCED=1
+  if declare -F sync_install_repo >/dev/null 2>&1; then
+    sync_install_repo "$INSTALL_DIR" main 2>/dev/null || true
+  fi
+  exec bash "$INSTALL_DIR/scripts/ubuntu-quick-install.sh" "$@"
+fi
+
+INSTALL_SCRIPT_VERSION="2026.05.26-awkfix6"
 chmod +x "${SCRIPT_DIR}"/*.sh 2>/dev/null || true
 
 load_network_lib() {

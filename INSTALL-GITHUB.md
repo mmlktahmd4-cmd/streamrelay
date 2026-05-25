@@ -12,13 +12,22 @@
 curl -fsSL https://raw.githubusercontent.com/mmlktahmd4-cmd/streamrelay/main/scripts/easy-install.sh | sudo bash
 ```
 
-### أو clone + تثبيت:
+### أو clone + تثبيت (يجب حذف المجلد القديم أولاً):
 
 ```bash
 sudo apt install -y git curl
+sudo rm -rf /opt/streamrelay
 sudo git clone https://github.com/mmlktahmd4-cmd/streamrelay.git /opt/streamrelay
 cd /opt/streamrelay
 sudo bash scripts/ubuntu-quick-install.sh
+```
+
+> **مهم:** بدون `sudo rm -rf /opt/streamrelay` — `git clone` **يفشل** ويبقى كود قديم.
+
+### أو نفس easy-install (clone + تثبيت تلقائي):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mmlktahmd4-cmd/streamrelay/main/scripts/clone-install.sh | sudo bash
 ```
 
 ---

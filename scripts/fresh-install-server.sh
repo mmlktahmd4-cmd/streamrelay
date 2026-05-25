@@ -31,7 +31,7 @@ echo "[2/3] تثبيت جديد من GitHub..."
 curl -fsSL https://raw.githubusercontent.com/mmlktahmd4-cmd/streamrelay/main/scripts/easy-install.sh | bash
 
 echo "[3/3] تحقق..."
-if grep -q 'install-scripts: 2026.05.26-awkfix5' "$INSTALL_DIR/scripts/ubuntu-quick-install.sh" 2>/dev/null; then
+if grep -q 'install-scripts: 2026.05.26-awkfix6' "$INSTALL_DIR/scripts/ubuntu-quick-install.sh" 2>/dev/null; then
   echo "OK: نسخة awkfix موجودة في السكriptات"
 fi
 docker compose -f "$INSTALL_DIR/docker-compose.yml" ps 2>/dev/null || true
