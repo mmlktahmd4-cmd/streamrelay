@@ -131,7 +131,18 @@ docker compose up -d
 
 ---
 
-## 10) أوامر مفيدة
+## 10) تحديث آمن بدون ضياع الإعدادات
+
+```bash
+cd /opt/streamrelay
+sudo bash scripts/safe-update.sh
+```
+
+يحافظ على: `.env`, كلمات السر, قاعدة البيانات, ملفات البث.
+
+---
+
+## 11) أوامر مفيدة
 
 ```bash
 cd /opt/streamrelay

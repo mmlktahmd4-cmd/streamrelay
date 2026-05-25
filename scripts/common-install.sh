@@ -43,8 +43,11 @@ wait_for_api() {
 
 print_streamrelay_urls() {
   install_common_dir
-  local server_ip http_port base_url
-  server_ip="$(grep '^SERVER_IP=' .env 2>/dev/null | cut -d= -f2- || hostname -I | awk '{print $1}')"
+  local script_dir server_ip http_port base_url
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  # shellcheck source=lib/network.sh
+  source "${script_dir}/lib/network.sh" 2>/dev/null || true
+  server_ip="$(grep '^SERVER_IP=' .env 2>/dev/null | cut -d= -f2- || detect_server_ip)"
   http_port="$(grep '^STREAMRELAY_HTTP_PORT=' .env 2>/dev/null | cut -d= -f2- || echo 80)"
   http_port="${http_port:-80}"
   if [ "$http_port" = "80" ]; then

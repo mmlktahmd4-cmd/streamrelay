@@ -16,6 +16,10 @@ if [ ! -f "$INSTALL_DIR/.env" ]; then
 fi
 
 cd "$INSTALL_DIR"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/network.sh
+source "${SCRIPT_DIR}/lib/network.sh" 2>/dev/null || true
+
 grep -q '^ADMIN_SYNC_PASSWORD=' .env \
   && sed -i 's|^ADMIN_SYNC_PASSWORD=.*|ADMIN_SYNC_PASSWORD=true|' .env \
   || echo "ADMIN_SYNC_PASSWORD=true" >> .env
@@ -39,7 +43,7 @@ docker compose restart api worker >/dev/null
 sleep 5
 
 ADMIN_PASS="$(grep '^ADMIN_PASSWORD=' .env | cut -d= -f2-)"
-BASE_URL="${PUBLIC_BASE_URL:-http://$(hostname -I | awk '{print $1}')}"
+BASE_URL="${PUBLIC_BASE_URL:-http://$(detect_server_ip)}"
 
 cat > "${INSTALL_DIR}/INSTALL-CREDENTIALS.txt" <<CRED
 StreamRelay — بيانات التثبيت

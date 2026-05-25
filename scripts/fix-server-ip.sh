@@ -6,14 +6,16 @@
 set -euo pipefail
 
 NO_RESTART="${1:-}"
-
 INSTALL_DIR="${INSTALL_DIR:-/opt/streamrelay}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# shellcheck source=lib/network.sh
+source "${SCRIPT_DIR}/lib/network.sh"
+
 cd "$INSTALL_DIR"
 
-SERVER_IP="$(hostname -I | tr ' ' '\n' | grep '^192\.168\.' | head -1)"
-SERVER_IP="${SERVER_IP:-$(hostname -I | tr ' ' '\n' | grep -v '^172\.' | head -1)}"
-SERVER_IP="${SERVER_IP:-$(hostname -I | awk '{print $1}')}"
-SERVER_LAN_SUBNET="$(echo "$SERVER_IP" | awk -F. '{print $1"."$2"."$3".0/24}')"
+SERVER_IP="$(detect_server_ip)"
+SERVER_LAN_SUBNET="$(ip_to_subnet "$SERVER_IP")"
 HTTP_PORT="$(grep '^STREAMRELAY_HTTP_PORT=' .env 2>/dev/null | cut -d= -f2- || echo 80)"
 HTTP_PORT="${HTTP_PORT:-80}"
 
