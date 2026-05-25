@@ -81,6 +81,7 @@ services:
     environment:
       POSTGRES_HOST: postgres
       REDIS_HOST: redis
+      SERVER_ROLE: stream-only
       SERVER_IP: ${SERVER_IP:-192.168.5.102}
       SERVER_LAN_SUBNET: ${SERVER_LAN_SUBNET:-192.168.5.0/24}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://192.168.5.102}

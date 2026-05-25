@@ -5,6 +5,7 @@ import { createChildLogger } from '../utils/logger.js';
 const log = createChildLogger('queue');
 
 let streamQueue = null;
+let processorsRegistered = false;
 
 export function getQueue() {
   if (!streamQueue) {
@@ -23,6 +24,12 @@ export function getQueue() {
 }
 
 export async function setupQueueProcessors() {
+  if (processorsRegistered) {
+    log.debug('Queue processors already registered — skip');
+    return;
+  }
+  processorsRegistered = true;
+
   const queue = getQueue();
 
   queue.process('start-channel', async (job) => {

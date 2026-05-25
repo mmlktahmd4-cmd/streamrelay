@@ -116,9 +116,9 @@ export const config = {
     vodDir: resolveDataDir(process.env.VOD_DIR, 'data/vod'),
     ffmpegPath: process.env.FFMPEG_PATH || 'ffmpeg',
     maxConcurrent: parseInt(process.env.MAX_CONCURRENT_STREAMS || '200', 10),
-    healthCheckInterval: parseInt(process.env.HEALTH_CHECK_INTERVAL || '5', 10) * 1000,
+    healthCheckInterval: parseInt(process.env.HEALTH_CHECK_INTERVAL || '15', 10) * 1000,
     maxRestartAttempts: parseInt(process.env.MAX_RESTART_ATTEMPTS || '0', 10),
-    restartCooldown: parseInt(process.env.RESTART_COOLDOWN || '2', 10) * 1000,
+    restartCooldown: parseInt(process.env.RESTART_COOLDOWN || '5', 10) * 1000,
   },
 
   public: {

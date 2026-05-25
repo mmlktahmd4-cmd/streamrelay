@@ -215,7 +215,7 @@ export function getSystemMetrics() {
   };
 }
 
-export async function probeHlsManifest(slug, maxAgeMs = 30000) {
+export async function probeHlsManifest(slug, maxAgeMs = 45000) {
   const filePath = path.join(config.streaming.hlsDir, slug, 'index.m3u8');
 
   try {

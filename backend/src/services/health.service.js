@@ -41,13 +41,20 @@ export async function runHealthChecks() {
 
   for (const channel of runningChannels) {
     handled.add(channel.id);
+
+    // لا تفحص القنوات أثناء التشغيل/إعادة التشغيل — يمنع إعادة تشغيل وهمية
+    if (channel.status === 'starting' || channel.status === 'restarting') {
+      continue;
+    }
+
     const inMemory = activeMap.get(channel.id);
     const health = await checkChannelHealth(channel);
     results.push(health);
 
-    const processMissing = !inMemory?.alive && !health.checks.process?.alive;
+    const ownsProcess = inMemory != null;
+    const processMissing = ownsProcess && !inMemory.alive && !health.checks.process?.alive;
 
-    if (!health.healthy || processMissing) {
+    if (!health.healthy) {
       log.warn({ channelId: channel.id, slug: channel.slug, checks: health.checks }, 'Unhealthy channel');
 
       await channelService.logStreamEvent(

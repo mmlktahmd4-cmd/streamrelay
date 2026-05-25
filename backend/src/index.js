@@ -167,11 +167,9 @@ async function main() {
     startNetworkWatcher();
     startBandwidthMonitor();
 
-    // تسجيل معالجات الطابور دائماً — إذا توقف worker يتابع API تشغيل القنوات
-    await setupQueueProcessors();
-
-    if (config.serverRole === 'full') {
-      // full: نفس المعالجات أعلاه (للتوافق مع التثبيت القديم)
+    // معالجات الطابور (FFmpeg + health) — worker فقط؛ API يضيف jobs ولا ينفّذها
+    if (config.serverRole !== 'api-only') {
+      await setupQueueProcessors();
     }
 
     const app = await buildApp();
