@@ -28,7 +28,7 @@ function AdminRoute({ children, minRole }) {
   }, [user]);
   if (loading) return <LoadingSpinner className="min-h-screen" />;
   if (!user) return <Navigate to="/login" replace />;
-  if (user.role === 'viewer') return <Navigate to="/watch" replace />;
+  if (user.role === 'viewer') return <Navigate to="/login" replace state={{ fromViewer: true }} />;
   if (minRole === 'admin' && user.role !== 'admin') return <Navigate to="/" replace />;
   if (minRole === 'operator' && !['admin', 'operator'].includes(user.role)) return <Navigate to="/" replace />;
   return children;
@@ -50,8 +50,7 @@ function ViewerRoute({ children }) {
 function GuestAdmin({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <LoadingSpinner className="min-h-screen" />;
-  if (user) {
-    if (user.role === 'viewer') return <Navigate to="/watch" replace />;
+  if (user && ['admin', 'operator'].includes(user.role)) {
     return <Navigate to="/" replace />;
   }
   return children;

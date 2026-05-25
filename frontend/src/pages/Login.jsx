@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getAuthErrorHint, getAuthErrorMessage } from '../utils/authErrors';
 import { setAuthPortal } from '../utils/authStorage';
 import { Radio, Tv, Shield } from 'lucide-react';
 
 export default function Login() {
-  const { login } = useAuth();
+  const { login, logout, user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -24,8 +25,16 @@ export default function Login() {
     setErrorHint('');
     setLoading(true);
     try {
-      const user = await login(username, password);
-      navigate(user.role === 'viewer' ? '/watch' : '/');
+      if (user?.role === 'viewer') {
+        logout();
+      }
+      const profile = await login(username, password);
+      if (profile.role === 'viewer') {
+        setError('هذا الحساب للمشاهدة فقط — استخدم حساب مدير أو مشغّل');
+        logout();
+        return;
+      }
+      navigate('/');
     } catch (err) {
       setError(getAuthErrorMessage(err, 'admin'));
       setErrorHint(getAuthErrorHint(err, 'admin'));
@@ -67,6 +76,12 @@ export default function Login() {
             <p className="text-sm text-slate-500 mb-6">أدخل بيانات حساب المدير أو المشغّل</p>
 
             <form onSubmit={handleSubmit} className="space-y-4">
+              {(user?.role === 'viewer' || location.state?.fromViewer) && (
+                <div className="admin-alert admin-alert-error">
+                  <p>أنت مسجل حالياً كمشاهد. أدخل بيانات حساب المدير للوصول إلى لوحة الإدارة.</p>
+                </div>
+              )}
+
               {error && (
                 <div className="admin-alert admin-alert-error">
                   <p>{error}</p>

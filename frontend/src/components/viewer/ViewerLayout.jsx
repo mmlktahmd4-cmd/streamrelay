@@ -30,7 +30,7 @@ export default function ViewerLayout() {
 
           <div className="flex items-center gap-2">
             {isOperator && (
-              <Link to="/" className="viewer-header-btn hidden sm:flex">
+              <Link to="/login" className="viewer-header-btn hidden sm:flex">
                 <Shield className="w-4 h-4" /> الإدارة
               </Link>
             )}
