@@ -33,16 +33,51 @@ detect_default_gateway() {
   ip -4 route show default 2>/dev/null | awk '{print $3; exit}'
 }
 
+is_valid_ipv4() {
+  local ip="${1:-}"
+  [[ "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || return 1
+  local o1 o2 o3 o4
+  IFS=. read -r o1 o2 o3 o4 <<< "$ip"
+  for o in "$o1" "$o2" "$o3" "$o4"; do
+    [ "$o" -ge 0 ] 2>/dev/null || return 1
+    [ "$o" -le 255 ] 2>/dev/null || return 1
+  done
+  return 0
+}
+
 detect_dns_servers() {
+  local token
+
   if command -v resolvectl &>/dev/null; then
-    resolvectl dns 2>/dev/null | awk '{for (i = 2; i <= NF; i++) if ($i ~ /^[0-9]/) print $i}'
+    while IFS= read -r token; do
+      is_valid_ipv4 "$token" && echo "$token"
+    done < <(resolvectl dns 2>/dev/null | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | sort -u)
     return
   fi
   if [ -f /run/systemd/resolve/resolv.conf ]; then
-    grep -E '^nameserver ' /run/systemd/resolve/resolv.conf | awk '{print $2}'
+    while IFS= read -r token; do
+      is_valid_ipv4 "$token" && echo "$token"
+    done < <(grep -E '^nameserver ' /run/systemd/resolve/resolv.conf | awk '{print $2}')
     return
   fi
-  grep -E '^nameserver ' /etc/resolv.conf 2>/dev/null | awk '{print $2}' | grep -v '^127\.'
+  while IFS= read -r token; do
+    is_valid_ipv4 "$token" && echo "$token"
+  done < <(grep -E '^nameserver ' /etc/resolv.conf 2>/dev/null | awk '{print $2}' | grep -v '^127\.')
+}
+
+collect_dns_servers() {
+  local -a dns_arr=()
+  local dns_line
+
+  while IFS= read -r dns_line; do
+    [ -n "$dns_line" ] && dns_arr+=("$dns_line")
+  done < <(detect_dns_servers | head -3)
+
+  if [ "${#dns_arr[@]}" -eq 0 ]; then
+    dns_arr=("1.1.1.1" "8.8.8.8")
+  fi
+
+  printf '%s\n' "${dns_arr[@]}"
 }
 
 is_static_ip_already() {
@@ -88,9 +123,14 @@ configure_static_ip_netplan() {
   else
     for dns in "$@"; do
       [ -n "$dns" ] || continue
+      is_valid_ipv4 "$dns" || continue
       dns_block="${dns_block}          - ${dns}
 "
     done
+    if [ -z "$dns_block" ]; then
+      dns_block="          - 1.1.1.1
+          - 8.8.8.8"
+    fi
   fi
 
   cat > /etc/netplan/99-streamrelay-static.yaml <<EOF
@@ -111,8 +151,17 @@ network:
 ${dns_block}
 EOF
   chmod 600 /etc/netplan/99-streamrelay-static.yaml
-  netplan generate
-  netplan apply
+  if ! netplan generate; then
+    rm -f /etc/netplan/99-streamrelay-static.yaml
+    echo "      خطأ: netplan generate فشل — تم التراجع"
+    return 1
+  fi
+  if ! netplan apply; then
+    rm -f /etc/netplan/99-streamrelay-static.yaml
+    echo "      خطأ: netplan apply فشل — تم التراجع"
+    return 1
+  fi
+  return 0
 }
 
 configure_static_ip_nmcli() {
@@ -132,6 +181,7 @@ configure_static_ip_nmcli() {
     local first=1
     for dns in "$@"; do
       [ -n "$dns" ] || continue
+      is_valid_ipv4 "$dns" || continue
       if [ "$first" -eq 1 ]; then
         dns_str="$dns"
         first=0
@@ -142,8 +192,10 @@ configure_static_ip_nmcli() {
   fi
   [ -n "$dns_str" ] || dns_str="1.1.1.1,8.8.8.8"
 
-  nmcli con mod "$conn" ipv4.method manual ipv4.addresses "$cidr" ipv4.gateway "$gateway" ipv4.dns "$dns_str"
-  nmcli con up "$conn"
+  nmcli con mod "$conn" ipv4.method manual ipv4.addresses "$cidr" ipv4.gateway "$gateway" ipv4.dns "$dns_str" \
+    || return 1
+  nmcli con up "$conn" || return 1
+  return 0
 }
 
 pin_server_network_config() {
@@ -175,7 +227,6 @@ apply_persistent_lan_ip() {
 
   local iface cidr ip gateway
   local -a dns_arr=()
-  local dns_line
 
   iface="$(detect_default_route_iface)"
   if [ -z "$iface" ]; then
@@ -197,9 +248,7 @@ apply_persistent_lan_ip() {
     return 0
   fi
 
-  while IFS= read -r dns_line; do
-    [ -n "$dns_line" ] && dns_arr+=("$dns_line")
-  done < <(detect_dns_servers | head -3)
+  mapfile -t dns_arr < <(collect_dns_servers)
 
   if is_static_ip_already "$iface"; then
     echo "      IP ثابت مُعد مسبقاً على ${iface} (${ip}) ✓"
@@ -210,9 +259,17 @@ apply_persistent_lan_ip() {
   echo "      تثبيت IP ثابت: ${ip} على ${iface} (gateway ${gateway})..."
 
   if [ -d /etc/netplan ] && command -v netplan &>/dev/null; then
-    configure_static_ip_netplan "$iface" "$cidr" "$gateway" "${dns_arr[@]}"
+    if ! configure_static_ip_netplan "$iface" "$cidr" "$gateway" "${dns_arr[@]}"; then
+      echo "      تحذير: فشل netplan — يُحفظ IP في .env فقط"
+      pin_server_network_config "$install_dir" "$ip" "$iface"
+      return 0
+    fi
   elif command -v nmcli &>/dev/null && nmcli general status &>/dev/null 2>&1; then
-    configure_static_ip_nmcli "$iface" "$cidr" "$gateway" "${dns_arr[@]}"
+    if ! configure_static_ip_nmcli "$iface" "$cidr" "$gateway" "${dns_arr[@]}"; then
+      echo "      تحذير: فشل NetworkManager — يُحفظ IP في .env فقط"
+      pin_server_network_config "$install_dir" "$ip" "$iface"
+      return 0
+    fi
   else
     echo "      تحذير: netplan/nmcli غير متوفر — يُحفظ IP في .env فقط"
     pin_server_network_config "$install_dir" "$ip" "$iface"
