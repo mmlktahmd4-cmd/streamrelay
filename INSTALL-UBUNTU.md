@@ -62,6 +62,7 @@ sudo bash /opt/streamrelay/scripts/launch-production.sh
 | `deploy-update.sh` | بناء + إعادة تشغيل |
 | `launch-production.sh` | إطلاق إنتاج |
 | `fix-server-ip.sh` | تصحيح IP الشبكة |
+| `install-preflight.sh` | فحص قبل التثبيت |
 
 ---
 
