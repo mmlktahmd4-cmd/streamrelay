@@ -8,7 +8,7 @@ set -euo pipefail
 INSTALL_DIR="${INSTALL_DIR:-/opt/streamrelay}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-INSTALL_SCRIPT_VERSION="2026.05.25-awkfix"
+INSTALL_SCRIPT_VERSION="2026.05.26-awkfix2"
 chmod +x "${SCRIPT_DIR}"/*.sh 2>/dev/null || true
 
 require_modern_scripts() {
@@ -31,8 +31,23 @@ require_modern_scripts() {
 }
 
 require_modern_scripts
-# shellcheck source=lib/network.sh
-source "${SCRIPT_DIR}/lib/network.sh"
+
+load_network_lib() {
+  local lib="${1:?}"
+  if [ ! -f "$lib" ]; then
+    echo "خطأ: ملف network.sh غير موجود: $lib"
+    echo "نفّذ: sudo bash scripts/install-from-github.sh"
+    exit 1
+  fi
+  # shellcheck source=lib/network.sh
+  source "$lib"
+  if ! declare -F ip_to_subnet >/dev/null 2>&1; then
+    echo "خطأ: ip_to_subnet غير معرّف في $lib"
+    exit 1
+  fi
+}
+
+load_network_lib "${SCRIPT_DIR}/lib/network.sh"
 
 port_in_use() {
   local port="$1"
@@ -138,6 +153,22 @@ fi
 cd "$INSTALL_DIR"
 chmod +x scripts/*.sh 2>/dev/null || true
 
+# بعد rsync من مجلد خارجي: تابع من /opt/streamrelay (يتجنب سكربت قديم في الذاكرة)
+if [ "$SOURCE_DIR" != "$INSTALL_DIR" ] && [ -f "$INSTALL_DIR/scripts/ubuntu-quick-install.sh" ]; then
+  if [ "${STREAMRELAY_INSTALL_REEXECED:-}" != "1" ]; then
+    export STREAMRELAY_INSTALL_REEXECED=1
+    export INSTALL_DIR
+    exec bash "$INSTALL_DIR/scripts/ubuntu-quick-install.sh" "$@"
+  fi
+fi
+
+if [ -d .git ]; then
+  git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
+  git pull --ff-only origin main 2>/dev/null || git pull --ff-only 2>/dev/null || true
+fi
+
+load_network_lib "$INSTALL_DIR/scripts/lib/network.sh"
+
 # ── 3. ملف البيئة ──
 echo "[3/7] إعداد .env ..."
 SERVER_IP="$(detect_server_ip)"
@@ -231,15 +262,6 @@ grep -q '^ADMIN_SYNC_PASSWORD=' .env \
 mkdir -p nginx/ssl data/hls data/vod data/logs
 
 # ── إصلاحات ما قبل Docker ──
-if [ -d .git ]; then
-  git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
-  if ! git rev-parse --is-inside-work-tree &>/dev/null; then
-    echo "تحذير: git غير متاح في $INSTALL_DIR"
-  elif git fetch origin &>/dev/null && git rev-parse "@{u}" &>/dev/null; then
-    git merge --ff-only "@{u}" 2>/dev/null || git pull --ff-only 2>/dev/null || true
-  fi
-fi
-
 if grep -q '^services:  postgres:' docker-compose.yml 2>/dev/null; then
   echo "      إصلاح docker-compose.yml..."
   python3 - <<'PY'

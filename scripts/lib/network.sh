@@ -32,16 +32,12 @@ detect_server_ip() {
   echo "$ip"
 }
 
-# 192.168.5.102 → 192.168.5.0/24
+# 192.168.5.102 → 192.168.5.0/24 (bash فقط — لا awk)
 ip_to_subnet() {
   local ip="${1:-}"
-  local a b c d
-  IFS=. read -r a b c d <<EOF
-${ip}
-EOF
-  if [ -n "$a" ] && [ -n "$b" ] && [ -n "$c" ] && [ -n "$d" ]; then
+  local a b c _rest
+  IFS=. read -r a b c _rest <<< "$ip"
+  if [ -n "$a" ] && [ -n "$b" ] && [ -n "$c" ]; then
     echo "${a}.${b}.${c}.0/24"
-  else
-    echo ""
   fi
 }

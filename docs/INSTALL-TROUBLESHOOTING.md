@@ -50,7 +50,7 @@ sudo bash scripts/ubuntu-quick-install.sh
 curl -fsSL https://raw.githubusercontent.com/mmlktahmd4-cmd/streamrelay/main/scripts/easy-install.sh | sudo bash
 ```
 
-**تحقق:** عند التثبيت يظهر `install-scripts: 2026.05.25-awkfix`
+**تحقق:** عند التثبيت يظهر `install-scripts: 2026.05.26-awkfix2`
 
 **يدوياً (بدون awk):**
 ```bash
