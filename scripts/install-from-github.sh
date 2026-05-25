@@ -15,6 +15,9 @@ REPO_URL="${1:-${GITHUB_REPO:-https://github.com/mmlktahmd4-cmd/streamrelay.git}
 BRANCH="${GITHUB_BRANCH:-main}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/streamrelay}"
 
+# إذا حُذف المجلد الحالي (rm -rf من داخل /opt/streamrelay) — انتقل لمسار آمن
+cd /tmp 2>/dev/null || cd / || true
+
 if [ -z "$REPO_URL" ]; then
   echo "الاستخدام:"
   echo "  sudo bash scripts/install-from-github.sh https://github.com/USER/streamrelay.git"

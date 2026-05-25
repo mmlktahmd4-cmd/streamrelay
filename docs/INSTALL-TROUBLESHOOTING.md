@@ -57,14 +57,15 @@ bash: ./install-from-github.sh: No such file or directory
 
 **السبب:** حذفت `/opt/streamrelay` بينما الطرفية **داخل** هذا المجلد (`cd /opt/streamrelay` ثم `rm -rf`).
 
-**الحل — نفّذ بالترتيب:**
+**الحل — نفّذ بالترتيب (سطر سطر):**
 ```bash
-cd ~
+cd /
+pwd
 sudo rm -rf /opt/streamrelay
 curl -fsSL https://raw.githubusercontent.com/mmlktahmd4-cmd/streamrelay/main/scripts/install-from-github.sh | sudo bash
 ```
 
-> **مهم:** دائماً `cd ~` أو `cd /tmp` **قبل** `rm -rf /opt/streamrelay`
+> **مهم:** إذا كان الـ prompt ما زال يظهر `/opt/streamrelay` — نفّذ `cd /` **أولاً** قبل أي أمر آخر.
 
 ---
 
