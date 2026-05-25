@@ -11,7 +11,7 @@
 # ─────────────────────────────────────────────────────────────
 set -euo pipefail
 
-REPO_URL="${1:-${GITHUB_REPO:-}}"
+REPO_URL="${1:-${GITHUB_REPO:-https://github.com/mmlktahmd4-cmd/streamrelay.git}}"
 BRANCH="${GITHUB_BRANCH:-main}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/streamrelay}"
 

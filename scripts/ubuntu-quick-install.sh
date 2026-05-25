@@ -8,7 +8,29 @@ set -euo pipefail
 INSTALL_DIR="${INSTALL_DIR:-/opt/streamrelay}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+INSTALL_SCRIPT_VERSION="2026.05.25-awkfix"
 chmod +x "${SCRIPT_DIR}"/*.sh 2>/dev/null || true
+
+require_modern_scripts() {
+  if [ ! -f "${SCRIPT_DIR}/lib/network.sh" ]; then
+    echo "خطأ: نسخة قديمة — ملف scripts/lib/network.sh غير موجود"
+    echo "نفّذ: cd ${INSTALL_DIR} && sudo git pull && sudo bash scripts/ubuntu-quick-install.sh"
+    exit 1
+  fi
+  if grep -qE 'awk -F.*0/24' "${SCRIPT_DIR}/ubuntu-quick-install.sh" \
+     || grep -qE 'awk -F.*0/24' "${SCRIPT_DIR}/fix-server-ip.sh" 2>/dev/null; then
+    echo "خطأ: نسخة قديمة تستخدم awk لـ SERVER_LAN_SUBNET (تسبب syntax error)"
+    if [ -d "${INSTALL_DIR}/.git" ]; then
+      echo "جاري git pull..."
+      git -C "${INSTALL_DIR}" pull --ff-only origin main
+      exec bash "${INSTALL_DIR}/scripts/ubuntu-quick-install.sh" "$@"
+    fi
+    echo "نفّذ: sudo git clone https://github.com/mmlktahmd4-cmd/streamrelay.git ${INSTALL_DIR}"
+    exit 1
+  fi
+}
+
+require_modern_scripts
 # shellcheck source=lib/network.sh
 source "${SCRIPT_DIR}/lib/network.sh"
 
@@ -71,6 +93,7 @@ fi
 
 echo "=============================================="
 echo "  StreamRelay — تثبيت Ubuntu"
+echo "  install-scripts: ${INSTALL_SCRIPT_VERSION}"
 echo "=============================================="
 
 # ── 1. متطلبات النظام ──
@@ -96,7 +119,11 @@ echo "[2/7] تجهيز $INSTALL_DIR ..."
 mkdir -p "$INSTALL_DIR"
 
 if [ "$SOURCE_DIR" != "$INSTALL_DIR" ]; then
-  rsync -a --delete \
+  if [ -d "$INSTALL_DIR/.git" ]; then
+    echo "      git موجود في $INSTALL_DIR — تخطي rsync (لا نستبدل بنسخة قديمة)"
+    git -C "$INSTALL_DIR" pull --ff-only origin main 2>/dev/null || true
+  else
+    rsync -a --delete \
     --exclude node_modules \
     --exclude backend/node_modules \
     --exclude frontend/node_modules \
@@ -105,6 +132,7 @@ if [ "$SOURCE_DIR" != "$INSTALL_DIR" ]; then
     --exclude data/hls \
     --exclude data/logs \
     "$SOURCE_DIR/" "$INSTALL_DIR/"
+  fi
 fi
 
 cd "$INSTALL_DIR"

@@ -37,6 +37,22 @@ check() {
   fi
 }
 
+if [ -f "$ROOT/scripts/ubuntu-quick-install.sh" ] && grep -qE 'awk -F.*0/24' "$ROOT/scripts/ubuntu-quick-install.sh" 2>/dev/null; then
+  echo "  [FAIL] نسخة قديمة — awk في ubuntu-quick-install (git pull مطلوب)"
+  checks_fail=$((checks_fail + 1))
+else
+  echo "  [OK]   لا awk subnet في سكript التثبيت"
+  checks_ok=$((checks_ok + 1))
+fi
+
+if [ -f "$ROOT/scripts/lib/network.sh" ]; then
+  echo "  [OK]   scripts/lib/network.sh موجود"
+  checks_ok=$((checks_ok + 1))
+else
+  echo "  [FAIL] scripts/lib/network.sh مفقود — git pull"
+  checks_fail=$((checks_fail + 1))
+fi
+
 check "root أو sudo" "$([ "$EUID" -eq 0 ] || command -v sudo &>/dev/null && echo 1 || echo 0)"
 check "curl" "$(command -v curl &>/dev/null && echo 1 || echo 0)"
 check "git" "$(command -v git &>/dev/null && echo 1 || echo 0)"

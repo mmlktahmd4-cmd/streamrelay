@@ -20,15 +20,23 @@ echo "$IP" | awk -F. {print $1"."$2"."$3".0/24}
 echo "$IP" | awk -F. '{print $1"."$2"."$3".0/24}'
 ```
 
-**الحل الدائم:** السكriptات تستخدم `scripts/lib/network.sh` (bash فقط).
+**الحل الدائم (النسخة الحالية):** `scripts/lib/network.sh` — bash فقط، **بدون awk**.
 
-**الحل:** السكربتات الحديثة تستخدم `scripts/lib/network.sh` (bash فقط).
-
+**على السيرفر — أمر واحد:**
 ```bash
 cd /opt/streamrelay
-git pull
+sudo git config --global --add safe.directory /opt/streamrelay
+sudo git pull origin main
+grep -q 'lib/network.sh' scripts/ubuntu-quick-install.sh && echo "OK: نسخة محدثة" || echo "FAIL: ما زالت قديمة"
 sudo bash scripts/ubuntu-quick-install.sh
 ```
+
+**تثبيت جديد من GitHub:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/mmlktahmd4-cmd/streamrelay/main/scripts/easy-install.sh | sudo bash
+```
+
+**تحقق:** عند التثبيت يظهر `install-scripts: 2026.05.25-awkfix`
 
 **يدوياً (بدون awk):**
 ```bash
