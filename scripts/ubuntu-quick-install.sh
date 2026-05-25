@@ -45,7 +45,7 @@ if [ -d "$INSTALL_DIR/.git" ] && [ "${STREAMRELAY_REPO_SYNCED:-}" != "1" ]; then
   exec bash "$INSTALL_DIR/scripts/ubuntu-quick-install.sh" "$@"
 fi
 
-INSTALL_SCRIPT_VERSION="2026.05.26-awkfix6"
+INSTALL_SCRIPT_VERSION="2026.05.26-netboot1"
 chmod +x "${SCRIPT_DIR}"/*.sh 2>/dev/null || true
 
 load_network_lib() {
@@ -66,6 +66,12 @@ load_network_lib() {
 }
 
 load_network_lib "${SCRIPT_DIR}/lib/network.sh"
+
+static_ip_lib="${SCRIPT_DIR}/lib/static-ip.sh"
+if [ -f "$static_ip_lib" ]; then
+  # shellcheck source=lib/static-ip.sh
+  source "$static_ip_lib"
+fi
 
 port_in_use() {
   local port="$1"
@@ -135,12 +141,13 @@ apt-get update -qq
 apt-get install -y -qq curl ca-certificates gnupg openssl tar gzip rsync git iproute2
 
 if ! command -v docker &>/dev/null; then
-  echo "[1/7] تثبيت Docker..."
+  echo "[1/8] تثبيت Docker..."
   curl -fsSL https://get.docker.com | sh
   systemctl enable docker
   systemctl start docker
 else
-  echo "[1/7] Docker موجود ✓"
+  echo "[1/8] Docker موجود ✓"
+  systemctl enable docker 2>/dev/null || true
 fi
 
 if ! docker compose version &>/dev/null; then
@@ -148,7 +155,7 @@ if ! docker compose version &>/dev/null; then
 fi
 
 # ── 2. نسخ المشروع ──
-echo "[2/7] تجهيز $INSTALL_DIR ..."
+echo "[2/8] تجهيز $INSTALL_DIR ..."
 mkdir -p "$INSTALL_DIR"
 
 if [ "$SOURCE_DIR" != "$INSTALL_DIR" ]; then
@@ -186,9 +193,22 @@ fi
 
 load_network_lib "$INSTALL_DIR/scripts/lib/network.sh"
 
-# ── 3. ملف البيئة ──
-echo "[3/7] إعداد .env ..."
-SERVER_IP="$(detect_server_ip)"
+if [ -f "$INSTALL_DIR/scripts/lib/static-ip.sh" ]; then
+  # shellcheck source=lib/static-ip.sh
+  source "$INSTALL_DIR/scripts/lib/static-ip.sh"
+fi
+
+# ── 3. IP ثابت على الشبكة ──
+echo "[3/8] تثبيت IP ثابت (لا يتغير بعد إعادة التشغيل)..."
+if declare -F apply_persistent_lan_ip >/dev/null 2>&1; then
+  apply_persistent_lan_ip "$INSTALL_DIR"
+else
+  echo "      تحذير: static-ip.sh غير متوفر — تخطي"
+fi
+
+# ── 4. ملف البيئة ──
+echo "[4/8] إعداد .env ..."
+SERVER_IP="$(resolve_server_ip "$INSTALL_DIR")"
 SERVER_LAN_SUBNET="$(ip_to_subnet "$SERVER_IP")"
 JWT_SECRET="$(openssl rand -hex 32)"
 JWT_REFRESH="$(openssl rand -hex 32)"
@@ -253,7 +273,13 @@ ADMIN_SYNC_PASSWORD=true
 EOF
   echo "      تم إنشاء .env جديد"
 else
-  echo "      .env موجود — تحديث المنفذ والعناوين فقط"
+  echo "      .env موجود — الحفاظ على SERVER_IP وتحديث الروابط"
+  EXISTING_IP="$(grep '^SERVER_IP=' .env 2>/dev/null | cut -d= -f2- || true)"
+  if [ -n "$EXISTING_IP" ] && [ "$EXISTING_IP" != "127.0.0.1" ]; then
+    SERVER_IP="$EXISTING_IP"
+    SERVER_LAN_SUBNET="$(ip_to_subnet "$SERVER_IP")"
+    BASE_URL="$(public_base_url "$SERVER_IP" "$HTTP_PORT")"
+  fi
   grep -q '^STREAMRELAY_HTTP_PORT=' .env \
     && sed -i "s|^STREAMRELAY_HTTP_PORT=.*|STREAMRELAY_HTTP_PORT=${HTTP_PORT}|" .env \
     || echo "STREAMRELAY_HTTP_PORT=${HTTP_PORT}" >> .env
@@ -269,6 +295,9 @@ else
   grep -q '^HLS_BASE_URL=' .env \
     && sed -i "s|^HLS_BASE_URL=.*|HLS_BASE_URL=${BASE_URL}/hls|" .env \
     || echo "HLS_BASE_URL=${BASE_URL}/hls" >> .env
+  grep -q '^RTMP_INGEST_URL=' .env \
+    && sed -i "s|^RTMP_INGEST_URL=.*|RTMP_INGEST_URL=rtmp://${SERVER_IP}:1935/live|" .env \
+    || echo "RTMP_INGEST_URL=rtmp://${SERVER_IP}:1935/live" >> .env
   ADMIN_PASS="$(grep '^ADMIN_PASSWORD=' .env | cut -d= -f2- || echo 'admin123')"
 fi
 
@@ -299,40 +328,47 @@ if ! docker compose config -q 2>/dev/null; then
 fi
 
 # ── 4. بناء الواجهة ──
-echo "[4/7] بناء لوحة التحكم (frontend)..."
+echo "[5/8] بناء لوحة التحكم (frontend)..."
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/common-install.sh"
 build_frontend
 
 # ── 5. بناء وتشغيل Docker ──
-echo "[5/7] بناء الحاويات (قد يستغرق 5–15 دقيقة)..."
+echo "[6/8] بناء الحاويات (قد يستغرق 5–15 دقيقة)..."
 export STREAMRELAY_HTTP_PORT="${HTTP_PORT}"
 docker compose pull postgres redis nginx 2>/dev/null || true
 docker compose build --parallel
 docker compose up -d
 
 # ── 6. انتظار جاهزية API ──
-echo "[6/7] انتظار تشغيل السيرفر..."
+echo "[7/8] انتظار تشغيل السيرفر..."
 if ! wait_for_api 60 3; then
   echo "تحذير: API لم يستجب بعد — تحقق: docker compose logs api"
 fi
 
-# ── 7. systemd (تشغيل تلقائي بعد إعادة التشغيل) ──
-echo "[7/7] تفعيل التشغيل التلقائي..."
+# ── 8. systemd + إقلاع تلقائي ──
+echo "[8/8] تفعيل التشغيل التلقائي بعد الإقلاع..."
+if declare -F enable_auto_boot_services >/dev/null 2>&1; then
+  enable_auto_boot_services
+fi
+try_enable_ac_power_restore 2>/dev/null || true
+
 cat > /etc/systemd/system/streamrelay.service <<UNIT
 [Unit]
 Description=StreamRelay IPTV (Docker Compose)
 Requires=docker.service
 After=docker.service network-online.target
+Wants=network-online.target
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=${INSTALL_DIR}
-EnvironmentFile=${INSTALL_DIR}/.env
+EnvironmentFile=-${INSTALL_DIR}/.env
+ExecStartPre=/bin/bash -c 'if [ -x ${INSTALL_DIR}/scripts/fix-server-ip.sh ]; then ${INSTALL_DIR}/scripts/fix-server-ip.sh --no-restart || true; fi'
 ExecStart=/usr/bin/docker compose up -d
 ExecStop=/usr/bin/docker compose down
-TimeoutStartSec=0
+TimeoutStartSec=300
 
 [Install]
 WantedBy=multi-user.target
@@ -370,6 +406,9 @@ echo ""
 echo "  في صفحة MikroTik اكتب IP السيرفر: ${SERVER_IP}"
 if [ -n "$SERVER_LAN_SUBNET" ]; then
   echo "  شبكة العملاء (اقتراح): ${SERVER_LAN_SUBNET}"
+fi
+if declare -F print_ac_power_restore_hint >/dev/null 2>&1; then
+  print_ac_power_restore_hint
 fi
 echo "=============================================="
 

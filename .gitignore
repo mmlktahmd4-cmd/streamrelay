@@ -42,6 +42,7 @@ data/mpegts/
 streamrelay-ubuntu.tar.gz
 streamrelay-ubuntu24.tar.gz
 INSTALL-CREDENTIALS.txt
+.streamrelay-network
 
 # Build
 frontend/dist/

@@ -67,3 +67,27 @@ ip_to_subnet() {
     echo "${a}.${b}.${c}.0/24"
   fi
 }
+
+# IP مثبّت: .env → .streamrelay-network → اكتشاف تلقائي
+resolve_server_ip() {
+  local install_dir="${1:-.}"
+  local existing pinned
+
+  if [ -f "${install_dir}/.env" ]; then
+    existing="$(grep '^SERVER_IP=' "${install_dir}/.env" 2>/dev/null | cut -d= -f2- || true)"
+    if [ -n "$existing" ] && [ "$existing" != "127.0.0.1" ]; then
+      echo "$existing"
+      return
+    fi
+  fi
+
+  if [ -f "${install_dir}/.streamrelay-network" ]; then
+    pinned="$(grep '^SERVER_IP=' "${install_dir}/.streamrelay-network" 2>/dev/null | cut -d= -f2- || true)"
+    if [ -n "$pinned" ] && [ "$pinned" != "127.0.0.1" ]; then
+      echo "$pinned"
+      return
+    fi
+  fi
+
+  detect_server_ip
+}

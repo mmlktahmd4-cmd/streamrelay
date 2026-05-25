@@ -14,7 +14,7 @@ source "${SCRIPT_DIR}/lib/network.sh"
 
 cd "$INSTALL_DIR"
 
-SERVER_IP="$(detect_server_ip)"
+SERVER_IP="$(resolve_server_ip "$INSTALL_DIR")"
 SERVER_LAN_SUBNET="$(ip_to_subnet "$SERVER_IP")"
 HTTP_PORT="$(grep '^STREAMRELAY_HTTP_PORT=' .env 2>/dev/null | cut -d= -f2- || echo 80)"
 HTTP_PORT="${HTTP_PORT:-80}"

@@ -23,6 +23,7 @@ echo ""
 BACKUP="/tmp/streamrelay-env-backup-$(date +%Y%m%d%H%M%S)"
 mkdir -p "$BACKUP"
 [ -f "$INSTALL_DIR/.env" ] && cp "$INSTALL_DIR/.env" "$BACKUP/.env"
+[ -f "$INSTALL_DIR/.streamrelay-network" ] && cp "$INSTALL_DIR/.streamrelay-network" "$BACKUP/"
 [ -f "$INSTALL_DIR/INSTALL-CREDENTIALS.txt" ] && cp "$INSTALL_DIR/INSTALL-CREDENTIALS.txt" "$BACKUP/"
 echo "نسخة احتياطية: $BACKUP"
 
