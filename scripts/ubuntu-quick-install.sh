@@ -8,14 +8,16 @@ set -euo pipefail
 INSTALL_DIR="${INSTALL_DIR:-/opt/streamrelay}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-INSTALL_SCRIPT_VERSION="2026.05.26-awkfix4"
+INSTALL_SCRIPT_VERSION="2026.05.26-awkfix5"
 chmod +x "${SCRIPT_DIR}"/*.sh 2>/dev/null || true
 
 load_network_lib() {
   local lib="${1:?}"
   if [ ! -f "$lib" ]; then
     echo "خطأ: ملف network.sh غير موجود: $lib"
-    echo "نفّذ: sudo bash scripts/install-from-github.sh"
+    echo "احذف المجلد القديم ثم استنسخ من GitHub:"
+    echo "  sudo rm -rf ${INSTALL_DIR}"
+    echo "  sudo git clone https://github.com/mmlktahmd4-cmd/streamrelay.git ${INSTALL_DIR}"
     exit 1
   fi
   # shellcheck source=lib/network.sh
@@ -26,32 +28,7 @@ load_network_lib() {
   fi
 }
 
-require_modern_scripts() {
-  if [ ! -f "${SCRIPT_DIR}/lib/network.sh" ]; then
-    echo "خطأ: نسخة قديمة — ملف scripts/lib/network.sh غير موجود"
-    echo "نفّذ: cd ${INSTALL_DIR} && sudo git pull && sudo bash scripts/ubuntu-quick-install.sh"
-    exit 1
-  fi
-  if has_legacy_awk_subnet "${SCRIPT_DIR}/ubuntu-quick-install.sh" "${SCRIPT_DIR}/fix-server-ip.sh"; then
-    echo "خطأ: نسخة قديمة تستخدم awk لـ SERVER_LAN_SUBNET (تسبب syntax error)"
-    if [ -d "${INSTALL_DIR}/.git" ]; then
-      if [ "${STREAMRELAY_AWKFIX_PULL:-}" = "1" ]; then
-        echo "بعد git pull ما زالت النسخة قديمة — أعد التثبيت:"
-        echo "  curl -fsSL https://raw.githubusercontent.com/mmlktahmd4-cmd/streamrelay/main/scripts/easy-install.sh | sudo bash"
-        exit 1
-      fi
-      echo "جاري git pull..."
-      export STREAMRELAY_AWKFIX_PULL=1
-      sync_install_repo "${INSTALL_DIR}" main
-      exec bash "${INSTALL_DIR}/scripts/ubuntu-quick-install.sh" "$@"
-    fi
-    echo "نفّذ: sudo git clone https://github.com/mmlktahmd4-cmd/streamrelay.git ${INSTALL_DIR}"
-    exit 1
-  fi
-}
-
 load_network_lib "${SCRIPT_DIR}/lib/network.sh"
-require_modern_scripts
 
 port_in_use() {
   local port="$1"

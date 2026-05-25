@@ -38,16 +38,19 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq git curl ca-certificates
 
-# استنساخ أو تحديث
+# استنساخ أو تحديث — دائماً نسخة GitHub نظيفة للسكربتات
 if [ -d "$INSTALL_DIR/.git" ]; then
-  echo "المجلد موجود — git pull..."
-  cd "$INSTALL_DIR"
-  git fetch origin
-  git checkout "$BRANCH" 2>/dev/null || git checkout main || git checkout master
-  git pull origin "$(git branch --show-current)"
+  echo "المجلد موجود — مزامنة scripts مع GitHub..."
+  git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
+  git -C "$INSTALL_DIR" fetch origin "$BRANCH"
+  git -C "$INSTALL_DIR" reset --hard "origin/$BRANCH"
+elif [ -d "$INSTALL_DIR" ]; then
+  echo "مجلد قديم بدون git — حذف واستنساخ..."
+  rm -rf "$INSTALL_DIR"
+  git clone --branch "$BRANCH" --depth 1 "$REPO_URL" "$INSTALL_DIR" 2>/dev/null \
+    || git clone --depth 1 "$REPO_URL" "$INSTALL_DIR"
 else
   echo "استنساخ إلى $INSTALL_DIR ..."
-  rm -rf "$INSTALL_DIR"
   git clone --branch "$BRANCH" --depth 1 "$REPO_URL" "$INSTALL_DIR" 2>/dev/null \
     || git clone --depth 1 "$REPO_URL" "$INSTALL_DIR"
 fi

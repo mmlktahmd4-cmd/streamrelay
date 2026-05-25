@@ -50,7 +50,18 @@ sudo bash scripts/ubuntu-quick-install.sh
 curl -fsSL https://raw.githubusercontent.com/mmlktahmd4-cmd/streamrelay/main/scripts/easy-install.sh | sudo bash
 ```
 
-**تحقق:** عند التثبيت يظهر `install-scripts: 2026.05.26-awkfix4`
+**تحقق:** عند التثبيت يظهر `install-scripts: 2026.05.26-awkfix5`
+
+**تثبيت نظيف (مهم — احذف القديم أولاً):**
+```bash
+cd /
+sudo rm -rf /opt/streamrelay
+sudo git clone https://github.com/mmlktahmd4-cmd/streamrelay.git /opt/streamrelay
+cd /opt/streamrelay
+sudo bash scripts/ubuntu-quick-install.sh
+```
+
+> `git clone` **يفشل** إذا `/opt/streamrelay` موجود — يبقى الكود القديم!
 
 **إذا git pull يقول local changes would be overwritten:**
 ```bash

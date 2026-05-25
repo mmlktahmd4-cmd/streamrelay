@@ -37,12 +37,12 @@ check() {
   fi
 }
 
-if has_legacy_awk_subnet "$ROOT/scripts/ubuntu-quick-install.sh" "$ROOT/scripts/fix-server-ip.sh"; then
-  echo "  [FAIL] نسخة قديمة — awk في سكربت التثبيت (git pull مطلوب)"
-  checks_fail=$((checks_fail + 1))
-else
-  echo "  [OK]   لا awk subnet في سكript التثبيت"
+if [ -f "$ROOT/scripts/lib/network.sh" ] && declare -F ip_to_subnet >/dev/null 2>&1; then
+  echo "  [OK]   ip_to_subnet (bash) جاهز — بدون awk"
   checks_ok=$((checks_ok + 1))
+else
+  echo "  [FAIL] scripts/lib/network.sh ناقص — احذف /opt/streamrelay وأعد clone"
+  checks_fail=$((checks_fail + 1))
 fi
 
 if [ -f "$ROOT/scripts/lib/network.sh" ]; then
