@@ -37,8 +37,8 @@ check() {
   fi
 }
 
-if [ -f "$ROOT/scripts/ubuntu-quick-install.sh" ] && grep -qE 'awk -F.*0/24' "$ROOT/scripts/ubuntu-quick-install.sh" 2>/dev/null; then
-  echo "  [FAIL] نسخة قديمة — awk في ubuntu-quick-install (git pull مطلوب)"
+if has_legacy_awk_subnet "$ROOT/scripts/ubuntu-quick-install.sh" "$ROOT/scripts/fix-server-ip.sh"; then
+  echo "  [FAIL] نسخة قديمة — awk في سكربت التثبيت (git pull مطلوب)"
   checks_fail=$((checks_fail + 1))
 else
   echo "  [OK]   لا awk subnet في سكript التثبيت"

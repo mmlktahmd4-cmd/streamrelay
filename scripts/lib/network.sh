@@ -1,6 +1,18 @@
 #!/bin/bash
 # StreamRelay — دوال شبكة آمنة (بدون awk — يتجنب أخطاء الاقتباس على Linux)
 
+# يكتشف أمر awk القديم (echo ... | awk -F.) — لا يطابق سطور grep الحارسة
+has_legacy_awk_subnet() {
+  local f
+  for f in "$@"; do
+    [ -f "$f" ] || continue
+    if grep -qE '\| awk -F\.|awk -F\. \{print' "$f" 2>/dev/null; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 # أول IPv4 مناسب: يفضّل 192.168.x ثم يتجنب 127 و 172.16-31 (Docker/VPN)
 detect_server_ip() {
   local ip="" candidate
