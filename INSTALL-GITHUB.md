@@ -36,7 +36,7 @@ git push -u origin main
 
 ---
 
-## 3) التثبيت على Ubuntu 24 من GitHub
+## 3) التثبيت على Ubuntu 22 / 24 من GitHub
 
 ### أمر واحد:
 

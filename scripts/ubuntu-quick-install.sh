@@ -1,6 +1,6 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────────
-# StreamRelay — تثبيت سريع على Ubuntu 24.04 LTS
+# StreamRelay — تثبيت سريع على Ubuntu 22.04 / 24.04 LTS
 # الاستخدام:  sudo bash scripts/ubuntu-quick-install.sh
 # ─────────────────────────────────────────────────────────────
 set -euo pipefail
@@ -9,13 +9,65 @@ INSTALL_DIR="${INSTALL_DIR:-/opt/streamrelay}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+port_in_use() {
+  local port="$1"
+  ss -tln 2>/dev/null | grep -q ":${port} " || \
+  netstat -tln 2>/dev/null | grep -q ":${port} "
+}
+
+detect_http_port() {
+  if port_in_use 80; then
+    if port_in_use 8080; then
+      echo "8088"
+    else
+      echo "8080"
+    fi
+  else
+    echo "80"
+  fi
+}
+
+public_base_url() {
+  local ip="$1"
+  local port="$2"
+  if [ "$port" = "80" ]; then
+    echo "http://${ip}"
+  else
+    echo "http://${ip}:${port}"
+  fi
+}
+
 if [ "$EUID" -ne 0 ]; then
   echo "شغّل السكربت كـ root:  sudo bash scripts/ubuntu-quick-install.sh"
   exit 1
 fi
 
+UBUNTU_VERSION=""
+if [ -f /etc/os-release ]; then
+  # shellcheck disable=SC1091
+  . /etc/os-release
+  UBUNTU_VERSION="${VERSION_ID:-}"
+fi
+
+case "$UBUNTU_VERSION" in
+  22.04|24.04)
+    echo "نظام مدعوم: Ubuntu ${UBUNTU_VERSION} ✓"
+    ;;
+  "")
+    echo "تحذير: لم يُكتشف إصدار Ubuntu — سيتم المتابعة..."
+    ;;
+  *)
+    echo "تحذير: Ubuntu ${UBUNTU_VERSION} غير مختبر رسمياً — يُفضّل 22.04 أو 24.04"
+    ;;
+esac
+
+HTTP_PORT="$(detect_http_port)"
+if [ "$HTTP_PORT" != "80" ]; then
+  echo "منفذ 80 مشغول (Apache/Nginx) — StreamRelay سيستخدم المنفذ ${HTTP_PORT}"
+fi
+
 echo "=============================================="
-echo "  StreamRelay — تثبيت Ubuntu 24"
+echo "  StreamRelay — تثبيت Ubuntu"
 echo "=============================================="
 
 # ── 1. متطلبات النظام ──
@@ -63,6 +115,7 @@ JWT_REFRESH="$(openssl rand -hex 32)"
 URL_SIGNING="$(openssl rand -hex 32)"
 DB_PASS="$(openssl rand -hex 16)"
 ADMIN_PASS="${ADMIN_PASSWORD:-$(openssl rand -base64 12 | tr -d '/+=' | head -c 12)}"
+BASE_URL="$(public_base_url "$SERVER_IP" "$HTTP_PORT")"
 
 if [ ! -f .env ]; then
   cat > .env <<EOF
@@ -98,10 +151,11 @@ HEALTH_CHECK_INTERVAL=5
 MAX_RESTART_ATTEMPTS=0
 RESTART_COOLDOWN=2
 
-PUBLIC_BASE_URL=http://${SERVER_IP}
+STREAMRELAY_HTTP_PORT=${HTTP_PORT}
+PUBLIC_BASE_URL=${BASE_URL}
 RTMP_INGEST_URL=rtmp://${SERVER_IP}:1935/live
-HLS_BASE_URL=http://${SERVER_IP}/hls
-ALLOWED_ORIGINS=http://${SERVER_IP},http://${SERVER_IP}:5173,http://localhost
+HLS_BASE_URL=${BASE_URL}/hls
+ALLOWED_ORIGINS=${BASE_URL},http://${SERVER_IP},http://${SERVER_IP}:5173,http://localhost
 
 RATE_LIMIT_MAX=300
 RATE_LIMIT_WINDOW_MS=60000
@@ -116,15 +170,24 @@ ADMIN_EMAIL=admin@localhost
 EOF
   echo "      تم إنشاء .env جديد"
 else
-  echo "      .env موجود — لم يُستبدَل"
+  echo "      .env موجود — تحديث المنفذ والعناوين فقط"
+  grep -q '^STREAMRELAY_HTTP_PORT=' .env \
+    && sed -i "s|^STREAMRELAY_HTTP_PORT=.*|STREAMRELAY_HTTP_PORT=${HTTP_PORT}|" .env \
+    || echo "STREAMRELAY_HTTP_PORT=${HTTP_PORT}" >> .env
+  grep -q '^PUBLIC_BASE_URL=' .env \
+    && sed -i "s|^PUBLIC_BASE_URL=.*|PUBLIC_BASE_URL=${BASE_URL}|" .env \
+    || echo "PUBLIC_BASE_URL=${BASE_URL}" >> .env
+  grep -q '^HLS_BASE_URL=' .env \
+    && sed -i "s|^HLS_BASE_URL=.*|HLS_BASE_URL=${BASE_URL}/hls|" .env \
+    || echo "HLS_BASE_URL=${BASE_URL}/hls" >> .env
   ADMIN_PASS="$(grep '^ADMIN_PASSWORD=' .env | cut -d= -f2- || echo 'admin123')"
-  SERVER_IP="$(grep '^PUBLIC_BASE_URL=' .env | sed 's|PUBLIC_BASE_URL=http://||' | cut -d/ -f1 || hostname -I | awk '{print $1}')"
 fi
 
 mkdir -p nginx/ssl data/hls data/vod data/logs
 
 # ── 4. بناء وتشغيل Docker ──
 echo "[4/6] بناء الحاويات (قد يستغرق 5–15 دقيقة)..."
+export STREAMRELAY_HTTP_PORT="${HTTP_PORT}"
 docker compose pull postgres redis nginx 2>/dev/null || true
 docker compose build --parallel
 docker compose up -d
@@ -132,7 +195,7 @@ docker compose up -d
 # ── 5. انتظار جاهزية API ──
 echo "[5/6] انتظار تشغيل السيرفر..."
 for i in $(seq 1 60); do
-  if curl -sf "http://127.0.0.1:3000/api/health" >/dev/null 2>&1; then
+  if docker compose exec -T api wget -qO- "http://127.0.0.1:3000/api/health" >/dev/null 2>&1; then
     break
   fi
   sleep 3
@@ -153,6 +216,7 @@ After=docker.service network-online.target
 Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=${INSTALL_DIR}
+EnvironmentFile=${INSTALL_DIR}/.env
 ExecStart=/usr/bin/docker compose up -d
 ExecStop=/usr/bin/docker compose down
 TimeoutStartSec=0
@@ -170,9 +234,14 @@ echo "=============================================="
 echo "  تم التثبيت بنجاح!"
 echo "=============================================="
 echo ""
-echo "  لوحة الإدارة:    http://${SERVER_IP}/login"
-echo "  بوابة المشاهدة:  http://${SERVER_IP}/watch/login"
-echo "  API:             http://${SERVER_IP}/api/health"
+echo "  Ubuntu:          ${UBUNTU_VERSION:-unknown}"
+echo "  لوحة الإدارة:    ${BASE_URL}/login"
+echo "  بوابة المشاهدة:  ${BASE_URL}/watch/login"
+echo "  API:             ${BASE_URL}/api/health"
+if [ "$HTTP_PORT" != "80" ]; then
+  echo ""
+  echo "  ملاحظة: منفذ 80 مشغول — StreamRelay على المنفذ ${HTTP_PORT}"
+fi
 echo ""
 echo "  المستخدم:  admin"
 echo "  كلمة المرور: ${ADMIN_PASS}"
@@ -192,7 +261,8 @@ echo "=============================================="
 cat > "${INSTALL_DIR}/INSTALL-CREDENTIALS.txt" <<CRED
 StreamRelay — بيانات التثبيت
 التاريخ: $(date -Iseconds)
-العنوان: http://${SERVER_IP}
+Ubuntu: ${UBUNTU_VERSION:-unknown}
+العنوان: ${BASE_URL}
 admin / ${ADMIN_PASS}
 CRED
 chmod 600 "${INSTALL_DIR}/INSTALL-CREDENTIALS.txt"

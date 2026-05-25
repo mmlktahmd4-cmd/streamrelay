@@ -2,7 +2,7 @@
 
 منصة IPTV لإدارة القنوات، البث الداخلي (HLS relay)، بوابة مشاهدة، وربط MikroTik.
 
-## التثبيت السريع — Ubuntu 24
+## التثبيت السريع — Ubuntu 22 / 24
 
 ```bash
 sudo apt install -y git
@@ -50,7 +50,7 @@ cd frontend && npm install && npm run dev
 
 ## المتطلبات
 
-- Ubuntu 24.04 LTS
+- Ubuntu 22.04 / 24.04 LTS
 - Docker + Docker Compose
 - 4 GB RAM (8 GB للبث)
 - FFmpeg (داخل Docker)

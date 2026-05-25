@@ -1,6 +1,6 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────────
-# StreamRelay — تثبيت من GitHub على Ubuntu 24
+# StreamRelay — تثبيت من GitHub على Ubuntu 22 / 24
 #
 # الاستخدام:
 #   sudo bash scripts/install-from-github.sh https://github.com/USER/streamrelay.git
