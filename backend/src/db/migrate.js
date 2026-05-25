@@ -6,10 +6,33 @@ import { runSchemaPatches } from './schema-patches.js';
 
 const log = createChildLogger('migrate');
 
+export async function syncAdminPassword(force = false) {
+  const existing = await query(
+    'SELECT id, password_hash FROM users WHERE username = $1',
+    [config.admin.username]
+  );
+  if (existing.rows.length === 0) return false;
+
+  const matches = await bcrypt.compare(config.admin.password, existing.rows[0].password_hash);
+  if (matches && !force) return false;
+
+  const hash = await bcrypt.hash(config.admin.password, 12);
+  await query(
+    'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
+    [hash, existing.rows[0].id]
+  );
+  log.info({ username: config.admin.username }, 'Admin password synced from ADMIN_PASSWORD');
+  return true;
+}
+
 export async function bootstrapAdmin() {
   const existing = await query('SELECT id FROM users WHERE username = $1', [config.admin.username]);
   if (existing.rows.length > 0) {
-    log.info('Admin user already exists, skipping bootstrap');
+    if (process.env.ADMIN_SYNC_PASSWORD === 'true') {
+      await syncAdminPassword(true);
+    } else {
+      log.info('Admin user already exists, skipping bootstrap');
+    }
     return;
   }
 

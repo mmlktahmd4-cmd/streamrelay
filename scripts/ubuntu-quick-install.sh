@@ -168,6 +168,7 @@ LOG_DIR=/var/log/streamrelay
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=${ADMIN_PASS}
 ADMIN_EMAIL=admin@localhost
+ADMIN_SYNC_PASSWORD=true
 EOF
   echo "      تم إنشاء .env جديد"
 else
@@ -183,6 +184,10 @@ else
     || echo "HLS_BASE_URL=${BASE_URL}/hls" >> .env
   ADMIN_PASS="$(grep '^ADMIN_PASSWORD=' .env | cut -d= -f2- || echo 'admin123')"
 fi
+
+grep -q '^ADMIN_SYNC_PASSWORD=' .env \
+  && sed -i 's|^ADMIN_SYNC_PASSWORD=.*|ADMIN_SYNC_PASSWORD=true|' .env \
+  || echo "ADMIN_SYNC_PASSWORD=true" >> .env
 
 mkdir -p nginx/ssl data/hls data/vod data/logs
 

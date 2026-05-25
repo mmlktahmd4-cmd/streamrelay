@@ -213,6 +213,17 @@ sudo bash scripts/ubuntu-quick-install.sh
 sudo bash scripts/check-ports.sh
 ```
 
+### Invalid credentials عند تسجيل الدخول
+
+يحدث عندما **كلمة المرور في `.env` لا تطابق** ما في قاعدة البيانات (مثلاً بعد إعادة تثبيت مع الاحتفاظ ببيانات PostgreSQL القديمة).
+
+```bash
+sudo cat /opt/streamrelay/INSTALL-CREDENTIALS.txt   # كلمة المرور الصحيحة
+sudo bash /opt/streamrelay/scripts/reset-admin-password.sh
+```
+
+> لا تستخدم `admin123` — هذه قيمة افتراضية للتطوير فقط. كلمة المرور الفعلية تُنشأ عند التثبيت وتُحفظ في `INSTALL-CREDENTIALS.txt`.
+
 ### worker يظهر unhealthy (تحذير فقط)
 
 الـ worker لا يشغّل HTTP API — HEALTHCHECK الافتراضي في Dockerfile يفحص `/api/health` ويفشل رغم أن العامل يعمل.
