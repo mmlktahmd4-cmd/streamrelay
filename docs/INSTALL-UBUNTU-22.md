@@ -178,6 +178,25 @@ sudo systemctl status streamrelay # خدمة systemd
 
 ## 10) استكشاف الأخطاء
 
+### git pull — dubious ownership
+
+```bash
+sudo git config --global --add safe.directory /opt/streamrelay
+cd /opt/streamrelay
+git pull
+```
+
+### yaml: mapping values are not allowed (docker-compose.yml)
+
+```bash
+cd /opt/streamrelay
+sudo git pull
+# أو إصلاح يدوي:
+python3 -c "from pathlib import Path; p=Path('docker-compose.yml'); p.write_text(p.read_text().replace('services:  postgres:','services:\n\n  postgres:',1))"
+docker compose config
+sudo bash scripts/ubuntu-quick-install.sh
+```
+
 ### Permission denied على السكربت
 
 ```bash

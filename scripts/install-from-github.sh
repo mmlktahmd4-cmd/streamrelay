@@ -51,4 +51,10 @@ fi
 
 cd "$INSTALL_DIR"
 chmod +x scripts/*.sh 2>/dev/null || true
+
+if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+  chown -R "$SUDO_USER:$SUDO_USER" "$INSTALL_DIR"
+fi
+git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
+
 exec bash scripts/ubuntu-quick-install.sh

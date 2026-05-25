@@ -186,6 +186,35 @@ fi
 
 mkdir -p nginx/ssl data/hls data/vod data/logs
 
+# ── إصلاحات ما قبل Docker ──
+if [ -d .git ]; then
+  git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
+  if ! git rev-parse --is-inside-work-tree &>/dev/null; then
+    echo "تحذير: git غير متاح في $INSTALL_DIR"
+  elif git fetch origin &>/dev/null && git rev-parse "@{u}" &>/dev/null; then
+    git merge --ff-only "@{u}" 2>/dev/null || git pull --ff-only 2>/dev/null || true
+  fi
+fi
+
+if grep -q '^services:  postgres:' docker-compose.yml 2>/dev/null; then
+  echo "      إصلاح docker-compose.yml..."
+  python3 - <<'PY'
+from pathlib import Path
+p = Path("docker-compose.yml")
+text = p.read_text(encoding="utf-8")
+text = text.replace("services:  postgres:", "services:\n\n  postgres:", 1)
+p.write_text(text, encoding="utf-8")
+PY
+fi
+
+if ! docker compose config -q 2>/dev/null; then
+  echo "خطأ في docker-compose.yml — نفّذ:"
+  echo "  sudo git config --global --add safe.directory $INSTALL_DIR"
+  echo "  cd $INSTALL_DIR && sudo git pull"
+  echo "  sudo bash scripts/ubuntu-quick-install.sh"
+  exit 1
+fi
+
 # ── 4. بناء وتشغيل Docker ──
 echo "[4/6] بناء الحاويات (قد يستغرق 5–15 دقيقة)..."
 export STREAMRELAY_HTTP_PORT="${HTTP_PORT}"
