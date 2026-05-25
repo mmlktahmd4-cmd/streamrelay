@@ -24,6 +24,7 @@ CREATE TABLE users (
     allowed_ips     INET[],
     expires_at      TIMESTAMPTZ,
     last_login      TIMESTAMPTZ,
+    login_session_id VARCHAR(64),
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

@@ -42,6 +42,9 @@ export default async function categoryRoutes(fastify) {
 
   fastify.post('/:id/movies/upload', {
     preHandler: [requireMinRole('operator')],
+    config: {
+      rateLimit: false,
+    },
   }, async (request, reply) => {
     try {
       const parts = request.parts();

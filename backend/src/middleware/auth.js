@@ -28,6 +28,16 @@ export async function authenticate(request, reply) {
 
       await request.jwtVerify();
       request.user = request.user;
+
+      if (request.user.role === 'viewer') {
+        if (!request.user.sid || !(await authService.isLoginSessionValid(request.user.id, request.user.sid))) {
+          return reply.status(401).send({
+            error: 'تم تسجيل الدخول من جهاز آخر — سجّل الدخول مجدداً',
+            reason: 'session_replaced',
+          });
+        }
+      }
+
       touchOnlineUser(request.user, { ip: request.ip });
     } else {
       return reply.status(401).send({ error: 'Authentication required' });

@@ -44,6 +44,13 @@ const PATCHES = [
     `,
     optional: true,
   },
+  {
+    id: '007_user_login_session',
+    sql: `
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS login_session_id VARCHAR(64);
+    `,
+    optional: true,
+  },
 ];
 
 export async function runSchemaPatches() {

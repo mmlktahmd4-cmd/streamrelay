@@ -29,7 +29,8 @@ async function buildApp() {
   const app = Fastify({
     logger: false,
     trustProxy: true,
-    requestTimeout: 30000,
+    requestTimeout: 0,
+    connectionTimeout: 120000,
   });
 
   // Allow DELETE requests with empty JSON body (axios default Content-Type)
@@ -69,7 +70,11 @@ async function buildApp() {
   app.decorate('authenticate', authenticate);
 
   await app.register(multipart, {
-    limits: { fileSize: 4 * 1024 * 1024 * 1024 },
+    limits: {
+      fileSize: 4 * 1024 * 1024 * 1024,
+      fields: 20,
+      files: 1,
+    },
   });
 
   const hlsHeaders = (res, filePath) => {

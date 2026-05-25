@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import { randomUUID } from 'crypto';
 import { query } from '../db/pool.js';
 import { hashToken } from '../utils/crypto.js';
 
@@ -33,6 +34,26 @@ export async function hashPassword(plain) {
 
 export async function updateLastLogin(userId) {
   await query('UPDATE users SET last_login = NOW() WHERE id = $1', [userId]);
+}
+
+/** جلسة دخول واحدة للمشاهد — جهاز جديد يلغي الجلسة السابقة */
+export async function rotateLoginSession(userId) {
+  const sessionId = randomUUID();
+  await query('UPDATE users SET login_session_id = $1 WHERE id = $2', [sessionId, userId]);
+  return sessionId;
+}
+
+export async function isLoginSessionValid(userId, sessionId) {
+  if (!userId || !sessionId) return false;
+  const result = await query(
+    'SELECT 1 FROM users WHERE id = $1 AND login_session_id = $2 AND is_active = true',
+    [userId, sessionId]
+  );
+  return result.rows.length > 0;
+}
+
+export async function clearLoginSession(userId) {
+  await query('UPDATE users SET login_session_id = NULL WHERE id = $1', [userId]);
 }
 
 export async function createUser({ username, password, role = 'viewer', max_connections, maxConnections, expires_at }) {

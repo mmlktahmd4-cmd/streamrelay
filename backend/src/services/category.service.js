@@ -196,7 +196,15 @@ export async function uploadMovie({ categoryId, name, description, isPublic, pos
 
   const storedName = `${slug}${ext}`;
   const filePath = path.join(config.streaming.vodDir, storedName);
-  await pipeline(fileStream, fs.createWriteStream(filePath));
+
+  try {
+    await pipeline(fileStream, fs.createWriteStream(filePath));
+  } catch (err) {
+    try {
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    } catch { /* ignore */ }
+    throw new Error(`فشل حفظ ملف الفيلم: ${err.message}`);
+  }
 
   const stat = fs.statSync(filePath);
   const { baseUrl } = getPublicUrls();

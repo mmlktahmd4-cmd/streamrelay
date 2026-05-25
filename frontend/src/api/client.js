@@ -22,6 +22,15 @@ api.interceptors.response.use(
   async (error) => {
     const original = error.config;
     if (error.response?.status === 401 && !original._retry) {
+      const reason = error.response?.data?.reason;
+      if (reason === 'session_replaced') {
+        clearAuthStorage();
+        if (!isAdminLoginPage() && !isViewerLoginPage()) {
+          window.location.href = getLoginPath('viewer');
+        }
+        return Promise.reject(error);
+      }
+
       const isLoginRequest = String(original?.url || '').includes('/auth/login');
       if (isLoginRequest) {
         return Promise.reject(error);
@@ -112,6 +121,8 @@ export const uploadMovie = (categoryId, file, { name, description, is_public, po
   return api.post(`/categories/${categoryId}/movies/upload`, form, {
     headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 0,
+    maxBodyLength: Infinity,
+    maxContentLength: Infinity,
     onUploadProgress: (e) => {
       if (onProgress && e.total) {
         onProgress(Math.round((e.loaded * 100) / e.total));

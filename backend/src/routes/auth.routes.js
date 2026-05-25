@@ -76,13 +76,24 @@ export default async function authRoutes(fastify) {
       );
     }
 
+    let sessionId = null;
+    if (user.role === 'viewer') {
+      sessionId = await authService.rotateLoginSession(user.id);
+    }
+
+    const accessPayload = { id: user.id, username: user.username, role: user.role };
+    if (sessionId) accessPayload.sid = sessionId;
+
     const accessToken = fastify.jwt.sign(
-      { id: user.id, username: user.username, role: user.role },
+      accessPayload,
       { expiresIn: process.env.JWT_ACCESS_EXPIRY || '15m' }
     );
 
+    const refreshPayload = { id: user.id, type: 'refresh' };
+    if (sessionId) refreshPayload.sid = sessionId;
+
     const refreshToken = fastify.jwt.sign(
-      { id: user.id, type: 'refresh' },
+      refreshPayload,
       { secret: process.env.JWT_REFRESH_SECRET, expiresIn: process.env.JWT_REFRESH_EXPIRY || '7d' }
     );
 
@@ -130,8 +141,20 @@ export default async function authRoutes(fastify) {
         return reply.status(403).send({ error: 'انتهت صلاحية الحساب' });
       }
 
+      if (user.role === 'viewer') {
+        if (!decoded.sid || !(await authService.isLoginSessionValid(user.id, decoded.sid))) {
+          return reply.status(401).send({
+            error: 'تم تسجيل الدخول من جهاز آخر — سجّل الدخول مجدداً',
+            reason: 'session_replaced',
+          });
+        }
+      }
+
+      const accessPayload = { id: user.id, username: user.username, role: user.role };
+      if (decoded.sid) accessPayload.sid = decoded.sid;
+
       const accessToken = fastify.jwt.sign(
-        { id: user.id, username: user.username, role: user.role },
+        accessPayload,
         { expiresIn: process.env.JWT_ACCESS_EXPIRY || '15m' }
       );
 

@@ -7,11 +7,16 @@ const REASON_HINTS = {
   admin: {
     wrong_password: 'نصيحة: كلمة مرور المدير محفوظة في INSTALL-CREDENTIALS.txt على السيرفر.',
   },
-  viewer: {},
+  viewer: {
+    session_replaced: 'تم فتح الحساب من جهاز آخر — مسموح جهاز واحد فقط.',
+  },
 };
 
 export function getAuthErrorMessage(err, context = 'admin') {
   const data = err?.response?.data;
+  if (data?.reason === 'session_replaced') {
+    return data.error || 'تم تسجيل الدخول من جهاز آخر — مسموح جهاز واحد فقط';
+  }
   if (typeof data?.error === 'string' && data.error.trim()) {
     return data.error;
   }
