@@ -4,7 +4,21 @@
 
 ---
 
-## 1) awk: unterminated string / syntax error
+## 0) حذف كامل وإعادة تثبيت (سيرفر نظيف)
+
+**حذف كل شيء + تثبيت جديد — أمر واحد:**
+```bash
+cd / && curl -fsSL https://raw.githubusercontent.com/mmlktahmd4-cmd/streamrelay/main/scripts/reset-server.sh | sudo bash
+```
+
+**حذف فقط (بدون تثبيت):**
+```bash
+cd / && curl -fsSL https://raw.githubusercontent.com/mmlktahmd4-cmd/streamrelay/main/scripts/wipe-server.sh | sudo bash
+```
+
+> **مهم:** دائماً `cd /` أولاً — لا تحذف `/opt/streamrelay` وأنت داخله.
+
+---
 
 **الخطأ:**
 ```
