@@ -1,0 +1,21 @@
+---
+description: رفع كل تحديث تلقائياً على GitHub بعد أي تعديل
+alwaysApply: true
+---
+
+# رفع تلقائي على GitHub
+
+بعد **أي** تعديل على المشروع (كود، سكربتات، إعدادات):
+
+1. **لا تنتظر** طلب المستخدم للرفع — ارفع مباشرة.
+2. نفّذ بالترتيب:
+   - `git status` و `git diff`
+   - `git add` للملفات ذات الصلة فقط (لا `.env` ولا secrets)
+   - `git commit` برسالة واضحة (why)
+   - `git push origin main`
+3. إذا فشل push، أصلح المشكلة وأعد المحاولة.
+4. أخبر المستخدم بـ commit hash والرابط بعد كل رفع.
+
+**لا ترفع:** `.env`, `INSTALL-CREDENTIALS.txt`, `node_modules`, مفاتيح SSL.
+
+**المستودع:** https://github.com/mmlktahmd4-cmd/streamrelay — الفرع `main`.
