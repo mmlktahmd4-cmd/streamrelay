@@ -46,7 +46,27 @@ echo "$IP"
 
 ---
 
-## 2) Permission denied على السكript
+## 1b) getcwd / BASH_SOURCE unbound / install-from-github not found
+
+**الخطأ:**
+```
+shell-init: error retrieving current directory: getcwd: cannot access parent directories
+bash: line 14: BASH_SOURCE[0]: unbound variable
+bash: ./install-from-github.sh: No such file or directory
+```
+
+**السبب:** حذفت `/opt/streamrelay` بينما الطرفية **داخل** هذا المجلد (`cd /opt/streamrelay` ثم `rm -rf`).
+
+**الحل — نفّذ بالترتيب:**
+```bash
+cd ~
+sudo rm -rf /opt/streamrelay
+curl -fsSL https://raw.githubusercontent.com/mmlktahmd4-cmd/streamrelay/main/scripts/install-from-github.sh | sudo bash
+```
+
+> **مهم:** دائماً `cd ~` أو `cd /tmp` **قبل** `rm -rf /opt/streamrelay`
+
+---
 
 **الخطأ:** `cannot execute: Permission denied`
 
