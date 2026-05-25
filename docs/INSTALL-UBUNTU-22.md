@@ -43,6 +43,36 @@ curl -fsSL https://raw.githubusercontent.com/mmlktahmd4-cmd/streamrelay/main/scr
 
 ## 3) ماذا يفعل سكربت التثبيت؟
 
+| الخطوة | ماذا يحدث |
+|--------|-----------|
+| `[1/6]` | تثبيت **Docker** و Docker Compose |
+| `[2/6]` | نسخ المشروع إلى `/opt/streamrelay` |
+| `[3/6]` | إنشاء ملف **`.env`** |
+| `[4/6]` | بناء وتشغيل الحاويات (5–15 دقيقة) |
+| `[5/6]` | انتظار جاهزية API |
+| `[6/6]` | تفعيل **systemd** للتشغيل التلقائي |
+
+> إذا ظهر `[1/6] تثبيت Docker` — **كل شيء طبيعي**. لا توقف العملية.
+
+**مهم — تشغيل السكربتات:**
+
+```bash
+# ✅ صح — استخدم دائماً bash
+sudo bash scripts/ubuntu-quick-install.sh
+
+# ❌ خطأ — قد يظهر Permission denied بعد git clone
+sudo scripts/ubuntu-quick-install.sh
+sudo ./scripts/install-ubuntu22.sh
+```
+
+**إذا ظهر `Permission denied`:**
+
+```bash
+cd /opt/streamrelay
+chmod +x scripts/*.sh
+sudo bash scripts/ubuntu-quick-install.sh
+```
+
 1. يثبّت **Docker** و **Docker Compose** (إن لم يكونا موجودين)
 2. ينشئ ملف **`.env`** بكلمات سر عشوائية
 3. يكتشف إذا **منفذ 80 مشغول** (Apache/Nginx) → يستخدم **8080** تلقائياً
@@ -147,6 +177,16 @@ sudo systemctl status streamrelay # خدمة systemd
 ---
 
 ## 10) استكشاف الأخطاء
+
+### Permission denied على السكربت
+
+```bash
+cd /opt/streamrelay
+chmod +x scripts/*.sh
+sudo bash scripts/ubuntu-quick-install.sh
+```
+
+> بعد `git clone` بعض الأنظمة لا تعطي صلاحية تنفيذ — استخدم **`bash scripts/...`** دائماً.
 
 ### منفذ مشغول
 

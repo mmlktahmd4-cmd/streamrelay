@@ -8,6 +8,7 @@ set -euo pipefail
 INSTALL_DIR="${INSTALL_DIR:-/opt/streamrelay}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+chmod +x "${SCRIPT_DIR}"/*.sh 2>/dev/null || true
 
 port_in_use() {
   local port="$1"
