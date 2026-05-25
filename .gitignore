@@ -39,6 +39,7 @@ data/mpegts/
 
 # Deploy artifacts
 *.tar.gz
+streamrelay-ubuntu.tar.gz
 streamrelay-ubuntu24.tar.gz
 INSTALL-CREDENTIALS.txt
 

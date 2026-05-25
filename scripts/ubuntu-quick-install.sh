@@ -73,7 +73,7 @@ echo "=============================================="
 # ── 1. متطلبات النظام ──
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq curl ca-certificates gnupg openssl tar gzip rsync git
+apt-get install -y -qq curl ca-certificates gnupg openssl tar gzip rsync git iproute2
 
 if ! command -v docker &>/dev/null; then
   echo "[1/6] تثبيت Docker..."

@@ -38,6 +38,8 @@ git push -u origin main
 
 ## 3) التثبيت على Ubuntu 22 / 24 من GitHub
 
+> دليل مفصّل: [docs/INSTALL-UBUNTU-22.md](docs/INSTALL-UBUNTU-22.md)
+
 ### أمر واحد:
 
 ```bash

@@ -1,7 +1,4 @@
-version: "3.9"
-
-services:
-  postgres:
+services:  postgres:
     image: postgres:16-alpine
     container_name: sr-postgres
     restart: unless-stopped
