@@ -71,13 +71,45 @@ function normalizeExitCode(code) {
 
 
 
-export async function scheduleAutoRestart(channelId) {
-
+export async function scheduleAutoStart(channelId, { delay = null } = {}) {
   const channel = await channelService.getChannelById(channelId);
+  if (!channel?.is_active || !canAutoRestart(channel)) return;
+  if (activeProcesses.has(channelId)) return;
 
+  const { getQueue } = await import('./queue.service.js');
+  const queue = getQueue();
+  const jobId = `auto-start-${channelId}`;
+
+  try {
+    const existing = await queue.getJob(jobId);
+    if (existing) {
+      const state = await existing.getState();
+      if (state === 'delayed' || state === 'waiting' || state === 'active') {
+        return;
+      }
+      await existing.remove();
+    }
+  } catch { /* ignore */ }
+
+  const delayMs = delay ?? config.streaming.restartCooldown;
+
+  await queue.add('start-channel', { channelId }, {
+    delay: delayMs,
+    jobId,
+    removeOnComplete: true,
+  });
+
+  log.info({ channelId, delayMs }, 'Auto-start scheduled');
+}
+
+export async function scheduleAutoRestart(channelId) {
+  const channel = await channelService.getChannelById(channelId);
   if (!canAutoRestart(channel)) return;
 
-
+  if (channel?.status === 'stopped' || channel?.status === 'error') {
+    await scheduleAutoStart(channelId);
+    return;
+  }
 
   const { getQueue } = await import('./queue.service.js');
 
@@ -518,11 +550,15 @@ export async function startStream(channelId) {
 
 export async function stopStream(channelId, options = {}) {
 
-  const { forDelete = false } = options;
+  const { forDelete = false, manual = true } = options;
 
 
 
-  manuallyStopped.add(channelId);
+  if (manual && !forDelete) {
+
+    manuallyStopped.add(channelId);
+
+  }
 
 
 
@@ -615,7 +651,7 @@ export async function restartStream(channelId) {
 
   await channelService.updateChannelStatus(channelId, 'restarting');
 
-  await stopStream(channelId);
+  await stopStream(channelId, { manual: false });
 
   await new Promise((resolve) => setTimeout(resolve, config.streaming.restartCooldown));
 
@@ -680,6 +716,14 @@ export function getActiveStreams() {
 export function getActiveCount() {
 
   return activeProcesses.size;
+
+}
+
+
+
+export function wasManuallyStopped(channelId) {
+
+  return manuallyStopped.has(channelId);
 
 }
 

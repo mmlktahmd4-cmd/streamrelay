@@ -1,41 +1,59 @@
 import * as channelService from './channel.service.js';
-import { getActiveStreams, scheduleAutoRestart, startStream } from './stream.service.js';
+import {
+  getActiveStreams,
+  scheduleAutoRestart,
+  scheduleAutoStart,
+  startStream,
+} from './stream.service.js';
 import { startBandwidthTracking } from './bandwidth.service.js';
 import { checkProcessAlive } from '../utils/process.js';
+import { config } from '../config/index.js';
 import { createChildLogger } from '../utils/logger.js';
 
 const log = createChildLogger('stream-recovery');
 
+function channelNeedsStart(channel, activeMap) {
+  const inMemory = activeMap.get(channel.id);
+  const pidAlive = channel.pid ? checkProcessAlive(channel.pid) : false;
+  return !(inMemory?.alive || pidAlive);
+}
+
 export async function recoverStreamsOnStartup() {
-  const [running, errorChannels] = await Promise.all([
-    channelService.getRunningChannels(),
-    channelService.getErrorChannelsWithAutoRestart(),
-  ]);
+  const delayMs = config.streaming.startupRecoveryDelayMs;
+  log.info({ delayMs }, 'Waiting before auto-starting all channels');
 
+  await new Promise((resolve) => setTimeout(resolve, delayMs));
+
+  const channels = await channelService.getChannelsForAutoStart();
   const activeMap = new Map(getActiveStreams().map((s) => [s.channelId, s]));
-  const seen = new Set();
+  let queued = 0;
 
-  for (const channel of [...running, ...errorChannels]) {
-    if (seen.has(channel.id)) continue;
-    seen.add(channel.id);
-
-    const inMemory = activeMap.get(channel.id);
-    const pidAlive = channel.pid ? checkProcessAlive(channel.pid) : false;
-
-    if (inMemory?.alive || pidAlive) {
-      if (pidAlive && channel.pid) {
+  for (const channel of channels) {
+    if (!channelNeedsStart(channel, activeMap)) {
+      if (channel.pid && checkProcessAlive(channel.pid)) {
         startBandwidthTracking(channel.id, channel.pid, channel.slug, channel.name);
       }
       continue;
     }
 
-    log.info({ channelId: channel.id, slug: channel.slug, status: channel.status }, 'Recovering stream');
+    log.info(
+      { channelId: channel.id, slug: channel.slug, status: channel.status },
+      'Auto-starting channel after server boot'
+    );
 
     try {
-      await startStream(channel.id);
+      await scheduleAutoStart(channel.id, { delay: queued * 400 });
+      queued += 1;
     } catch (err) {
-      log.warn({ channelId: channel.id, err: err.message }, 'Startup recovery failed, scheduling restart');
-      await scheduleAutoRestart(channel.id);
+      log.warn({ channelId: channel.id, err: err.message }, 'Failed to queue startup start');
+      try {
+        await startStream(channel.id);
+      } catch (startErr) {
+        log.warn({ channelId: channel.id, err: startErr.message }, 'Startup start failed');
+        await scheduleAutoRestart(channel.id);
+      }
     }
   }
+
+  log.info({ queued, total: channels.length }, 'Startup channel recovery complete');
 }

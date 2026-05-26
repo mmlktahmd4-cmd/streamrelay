@@ -197,6 +197,26 @@ export async function getErrorChannelsWithAutoRestart() {
   return result.rows;
 }
 
+/** قنوات متوقفة مع إعادة تشغيل تلقائي */
+export async function getStoppedChannelsWithAutoRestart() {
+  const result = await query(
+    `SELECT * FROM channels
+     WHERE is_active = true AND auto_restart = true AND status = 'stopped'`
+  );
+  return result.rows;
+}
+
+/** قنوات يجب تشغيلها تلقائياً (بعد إقلاع السيرفر أو عند التوقف) */
+export async function getChannelsForAutoStart() {
+  const result = await query(
+    `SELECT * FROM channels
+     WHERE is_active = true
+       AND auto_restart = true
+       AND status IN ('stopped', 'error', 'running', 'starting', 'restarting')`
+  );
+  return result.rows;
+}
+
 export function parseM3UContent(content) {
   const lines = content.split(/\r?\n/);
   const entries = [];
@@ -291,6 +311,11 @@ export async function importM3U(content, { categoryId = null, isPublic = true } 
         description: entry.group ? `المجموعة: ${entry.group}` : null,
       });
       imported.push({ id: channel.id, name: channel.name, slug: channel.slug });
+
+      if (channel.auto_restart !== false) {
+        const { scheduleAutoStart } = await import('./stream.service.js');
+        await scheduleAutoStart(channel.id, { delay: 5000 + imported.length * 400 });
+      }
     } catch (err) {
       if (err.message?.includes('already exists')) {
         skipped.push({ name: entry.name, reason: 'duplicate' });

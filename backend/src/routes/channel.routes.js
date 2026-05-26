@@ -148,6 +148,10 @@ export default async function channelRoutes(fastify) {
   }, async (request, reply) => {
     try {
       const channel = await channelService.createChannel(request.body);
+      if (channel.auto_restart !== false) {
+        const { scheduleAutoStart } = await import('../services/stream.service.js');
+        await scheduleAutoStart(channel.id, { delay: 3000 });
+      }
       reply.status(201);
       return channel;
     } catch (err) {

@@ -1,5 +1,5 @@
 import * as channelService from './channel.service.js';
-import { getActiveStreams, scheduleAutoRestart } from './stream.service.js';
+import { getActiveStreams, scheduleAutoRestart, scheduleAutoStart, wasManuallyStopped } from './stream.service.js';
 import { probeHlsManifest } from '../utils/metrics.js';
 import { checkProcessAlive } from '../utils/process.js';
 import { createChildLogger } from '../utils/logger.js';
@@ -31,9 +31,10 @@ export async function checkChannelHealth(channel) {
   return result;
 }
 export async function runHealthChecks() {
-  const [runningChannels, errorChannels] = await Promise.all([
+  const [runningChannels, errorChannels, stoppedChannels] = await Promise.all([
     channelService.getRunningChannels(),
     channelService.getErrorChannelsWithAutoRestart(),
+    channelService.getStoppedChannelsWithAutoRestart(),
   ]);
   const activeMap = new Map(getActiveStreams().map((s) => [s.channelId, s]));
   const results = [];
@@ -81,13 +82,28 @@ export async function runHealthChecks() {
     if (handled.has(channel.id) || activeMap.has(channel.id)) continue;
 
     log.info({ channelId: channel.id, slug: channel.slug }, 'Recovering stalled error channel');
-    await scheduleAutoRestart(channel.id);
+    await scheduleAutoStart(channel.id);
     results.push({
       channelId: channel.id,
       slug: channel.slug,
       status: channel.status,
       healthy: false,
       checks: { recovery: true },
+    });
+  }
+
+  for (const channel of stoppedChannels) {
+    if (handled.has(channel.id) || activeMap.has(channel.id)) continue;
+    if (wasManuallyStopped(channel.id)) continue;
+
+    log.info({ channelId: channel.id, slug: channel.slug }, 'Auto-starting stopped channel');
+    await scheduleAutoStart(channel.id);
+    results.push({
+      channelId: channel.id,
+      slug: channel.slug,
+      status: channel.status,
+      healthy: false,
+      checks: { auto_start: true },
     });
   }
 
