@@ -31,6 +31,7 @@ async function buildApp() {
     trustProxy: true,
     requestTimeout: 0,
     connectionTimeout: 120000,
+    bodyLimit: 4 * 1024 * 1024 * 1024,
   });
 
   // Allow DELETE requests with empty JSON body (axios default Content-Type)
@@ -72,6 +73,7 @@ async function buildApp() {
   await app.register(multipart, {
     limits: {
       fileSize: 4 * 1024 * 1024 * 1024,
+      fieldSize: 1024 * 1024,
       fields: 20,
       files: 1,
     },

@@ -47,45 +47,35 @@ export default async function categoryRoutes(fastify) {
     },
   }, async (request, reply) => {
     try {
-      const parts = request.parts();
-      let name = '';
-      let description = '';
-      let isPublic = true;
-      let posterUrl = '';
-      let filePart = null;
+      const fields = {};
+      let movie = null;
 
-      for await (const part of parts) {
+      for await (const part of request.parts()) {
         if (part.type === 'file') {
-          filePart = part;
-        } else if (part.fieldname === 'name') {
-          name = part.value;
-        } else if (part.fieldname === 'description') {
-          description = part.value;
-        } else if (part.fieldname === 'is_public') {
-          isPublic = part.value !== 'false';
-        } else if (part.fieldname === 'poster_url') {
-          posterUrl = part.value;
+          if (part.fieldname !== 'file') {
+            part.file.resume();
+            continue;
+          }
+
+          const name = fields.name?.trim() || pathBasename(part.filename);
+          movie = await categoryService.uploadMovie({
+            categoryId: request.params.id,
+            name,
+            description: fields.description?.trim() || '',
+            isPublic: fields.is_public !== 'false',
+            posterUrl: fields.poster_url?.trim() || null,
+            fileStream: part.file,
+            filename: part.filename,
+            mimetype: part.mimetype,
+          });
+        } else {
+          fields[part.fieldname] = part.value;
         }
       }
 
-      if (!filePart) {
+      if (!movie) {
         return reply.status(400).send({ error: 'Video file is required' });
       }
-
-      if (!name) {
-        name = pathBasename(filePart.filename);
-      }
-
-      const movie = await categoryService.uploadMovie({
-        categoryId: request.params.id,
-        name,
-        description,
-        isPublic,
-        posterUrl: posterUrl || null,
-        fileStream: filePart.file,
-        filename: filePart.filename,
-        mimetype: filePart.mimetype,
-      });
 
       reply.status(201);
       return movie;

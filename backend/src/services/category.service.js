@@ -198,7 +198,10 @@ export async function uploadMovie({ categoryId, name, description, isPublic, pos
   const filePath = path.join(config.streaming.vodDir, storedName);
 
   try {
-    await pipeline(fileStream, fs.createWriteStream(filePath));
+    await pipeline(
+      fileStream,
+      fs.createWriteStream(filePath, { highWaterMark: 1024 * 1024 })
+    );
   } catch (err) {
     try {
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);

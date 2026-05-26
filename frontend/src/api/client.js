@@ -112,17 +112,20 @@ export const updateMovie = (id, data) => api.put(`/categories/movies/${id}`, dat
 
 export const uploadMovie = (categoryId, file, { name, description, is_public, poster_url, onProgress } = {}) => {
   const form = new FormData();
-  form.append('file', file);
   if (name) form.append('name', name);
   if (description) form.append('description', description);
   if (poster_url) form.append('poster_url', poster_url);
   form.append('is_public', is_public !== false ? 'true' : 'false');
+  form.append('file', file);
 
   return api.post(`/categories/${categoryId}/movies/upload`, form, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-    timeout: 0,
+    timeout: 86400000,
     maxBodyLength: Infinity,
     maxContentLength: Infinity,
+    transformRequest: [(data, headers) => {
+      delete headers['Content-Type'];
+      return data;
+    }],
     onUploadProgress: (e) => {
       if (onProgress && e.total) {
         onProgress(Math.round((e.loaded * 100) / e.total));
