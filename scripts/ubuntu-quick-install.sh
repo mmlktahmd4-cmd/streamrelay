@@ -45,7 +45,7 @@ if [ -d "$INSTALL_DIR/.git" ] && [ "${STREAMRELAY_REPO_SYNCED:-}" != "1" ]; then
   exec bash "$INSTALL_DIR/scripts/ubuntu-quick-install.sh" "$@"
 fi
 
-INSTALL_SCRIPT_VERSION="2026.05.29-1"
+INSTALL_SCRIPT_VERSION="2026.05.29-2"
 chmod +x "${SCRIPT_DIR}"/*.sh 2>/dev/null || true
 
 load_network_lib() {
@@ -88,16 +88,6 @@ detect_http_port() {
     fi
   else
     echo "80"
-  fi
-}
-
-public_base_url() {
-  local ip="$1"
-  local port="$2"
-  if [ "$port" = "80" ]; then
-    echo "http://${ip}"
-  else
-    echo "http://${ip}:${port}"
   fi
 }
 
@@ -258,7 +248,7 @@ SERVER_LAN_SUBNET=${SERVER_LAN_SUBNET}
 PUBLIC_BASE_URL=${BASE_URL}
 RTMP_INGEST_URL=rtmp://${SERVER_IP}:1935/live
 HLS_BASE_URL=${BASE_URL}/hls
-ALLOWED_ORIGINS=${BASE_URL},http://${SERVER_IP},http://${SERVER_IP}:5173,http://localhost
+ALLOWED_ORIGINS=$(allowed_origins_for "${BASE_URL}")
 
 RATE_LIMIT_MAX=300
 RATE_LIMIT_WINDOW_MS=60000
@@ -279,26 +269,11 @@ else
   if [ -n "$EXISTING_IP" ] && [ "$EXISTING_IP" != "127.0.0.1" ]; then
     SERVER_IP="$EXISTING_IP"
     SERVER_LAN_SUBNET="$(ip_to_subnet "$SERVER_IP")"
-    BASE_URL="$(public_base_url "$SERVER_IP" "$HTTP_PORT")"
   fi
-  grep -q '^STREAMRELAY_HTTP_PORT=' .env \
-    && sed -i "s|^STREAMRELAY_HTTP_PORT=.*|STREAMRELAY_HTTP_PORT=${HTTP_PORT}|" .env \
-    || echo "STREAMRELAY_HTTP_PORT=${HTTP_PORT}" >> .env
+  BASE_URL="$(sync_env_public_urls "$INSTALL_DIR" "$SERVER_IP" "$HTTP_PORT")"
   grep -q '^SERVER_LAN_SUBNET=' .env \
     && sed -i "s|^SERVER_LAN_SUBNET=.*|SERVER_LAN_SUBNET=${SERVER_LAN_SUBNET}|" .env \
     || echo "SERVER_LAN_SUBNET=${SERVER_LAN_SUBNET}" >> .env
-  grep -q '^SERVER_IP=' .env \
-    && sed -i "s|^SERVER_IP=.*|SERVER_IP=${SERVER_IP}|" .env \
-    || echo "SERVER_IP=${SERVER_IP}" >> .env
-  grep -q '^PUBLIC_BASE_URL=' .env \
-    && sed -i "s|^PUBLIC_BASE_URL=.*|PUBLIC_BASE_URL=${BASE_URL}|" .env \
-    || echo "PUBLIC_BASE_URL=${BASE_URL}" >> .env
-  grep -q '^HLS_BASE_URL=' .env \
-    && sed -i "s|^HLS_BASE_URL=.*|HLS_BASE_URL=${BASE_URL}/hls|" .env \
-    || echo "HLS_BASE_URL=${BASE_URL}/hls" >> .env
-  grep -q '^RTMP_INGEST_URL=' .env \
-    && sed -i "s|^RTMP_INGEST_URL=.*|RTMP_INGEST_URL=rtmp://${SERVER_IP}:1935/live|" .env \
-    || echo "RTMP_INGEST_URL=rtmp://${SERVER_IP}:1935/live" >> .env
   ADMIN_PASS="$(grep '^ADMIN_PASSWORD=' .env | cut -d= -f2- || echo 'admin123')"
 fi
 

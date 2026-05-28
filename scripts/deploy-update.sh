@@ -26,4 +26,8 @@ if ! wait_for_api 30 2; then
   echo "تحذير: تحقق من السجل: docker compose logs api --tail 50"
 fi
 
+if [ -f "${SCRIPT_DIR}/fix-server-ip.sh" ]; then
+  bash "${SCRIPT_DIR}/fix-server-ip.sh" --no-restart 2>/dev/null || true
+fi
+
 print_streamrelay_urls

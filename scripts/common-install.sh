@@ -48,13 +48,8 @@ print_streamrelay_urls() {
   # shellcheck source=lib/network.sh
   source "${script_dir}/lib/network.sh" 2>/dev/null || true
   server_ip="$(grep '^SERVER_IP=' .env 2>/dev/null | cut -d= -f2- || detect_server_ip)"
-  http_port="$(grep '^STREAMRELAY_HTTP_PORT=' .env 2>/dev/null | cut -d= -f2- || echo 80)"
-  http_port="${http_port:-80}"
-  if [ "$http_port" = "80" ]; then
-    base_url="http://${server_ip}"
-  else
-    base_url="http://${server_ip}:${http_port}"
-  fi
+  http_port="$(read_http_port . 2>/dev/null || echo 80)"
+  base_url="$(public_base_url "$server_ip" "$http_port" 2>/dev/null || echo "http://${server_ip}:${http_port}")"
 
   echo ""
   echo "=============================================="

@@ -5,6 +5,11 @@ import {
   detectPhysicalLanIp,
   resolveHomeSubnet,
 } from '../utils/network-ip.js';
+import {
+  buildPublicBaseUrl,
+  normalizeConfiguredBaseUrl,
+  readHttpPort,
+} from '../utils/public-url-build.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '../../..');
@@ -43,21 +48,15 @@ function getLanIp() {
   return detectPhysicalLanIp(homeSubnet);
 }
 
-function resolvePublicUrl(envValue, fallbackPort, pathSuffix = '') {
+function resolvePublicUrl(envValue, pathSuffix = '') {
   const lanIp = getLanIp();
-  const configured = envValue?.trim();
-
-  if (configured && !configured.includes('localhost') && !configured.includes('127.0.0.1')) {
-    return configured.replace(/\/$/, '');
-  }
-
-  const portMatch = configured?.match(/:(\d+)/);
-  const port = portMatch?.[1] || fallbackPort;
-  return `http://${lanIp}:${port}${pathSuffix}`;
+  const httpPort = readHttpPort();
+  const base = normalizeConfiguredBaseUrl(envValue, lanIp, httpPort);
+  return pathSuffix ? `${base}${pathSuffix}` : base;
 }
 
-const hlsBase = resolvePublicUrl(process.env.HLS_BASE_URL, '5173', '/hls');
-const publicBase = resolvePublicUrl(process.env.PUBLIC_BASE_URL, '5173');
+const hlsBase = resolvePublicUrl(process.env.HLS_BASE_URL, '/hls');
+const publicBase = resolvePublicUrl(process.env.PUBLIC_BASE_URL);
 
 function resolveAllowedOrigins() {
   const configured = (process.env.ALLOWED_ORIGINS || '')
@@ -66,12 +65,16 @@ function resolveAllowedOrigins() {
     .filter(Boolean);
 
   const lanIp = getLanIp();
+  const httpPort = readHttpPort();
+  const baseUrl = buildPublicBaseUrl(lanIp, httpPort);
   const defaults = [
     `http://localhost:5173`,
     `http://127.0.0.1:5173`,
     `http://${lanIp}:5173`,
     `http://localhost:3000`,
+    `http://127.0.0.1:3000`,
     `http://${lanIp}:3000`,
+    baseUrl,
   ];
 
   return [...new Set([...configured, ...defaults])];

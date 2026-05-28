@@ -9,6 +9,10 @@ import {
   isRunningInContainer,
   resolveHomeSubnet,
 } from '../utils/network-ip.js';
+import {
+  buildPublicBaseUrl,
+  normalizeConfiguredBaseUrl,
+} from '../utils/public-url-build.js';
 
 const log = createChildLogger('public-url');
 
@@ -116,12 +120,6 @@ function resolveWebPort(mikrotik) {
   return 5173;
 }
 
-function buildBaseUrl(serverIp, webPort, protocol = 'http') {
-  const defaultPort = protocol === 'https' ? 443 : 80;
-  if (webPort === defaultPort) return `${protocol}://${serverIp}`;
-  return `${protocol}://${serverIp}:${webPort}`;
-}
-
 async function loadMikrotikSettings() {
   try {
     const result = await query(`SELECT value FROM settings WHERE key = 'mikrotik'`);
@@ -137,7 +135,7 @@ function buildCache(mikrotik) {
   const { ip: serverIp, source } = resolveServerIp(mikrotik);
   const webPort = resolveWebPort(mikrotik);
   const apiPort = mikrotik.api_port || config.port;
-  const baseUrl = buildBaseUrl(serverIp, webPort);
+  const baseUrl = normalizeConfiguredBaseUrl(process.env.PUBLIC_BASE_URL, serverIp, webPort);
   const hlsBase = `${baseUrl}/api/hls`;
 
   return {
@@ -197,8 +195,8 @@ export function getAllowedOrigins() {
     'http://localhost:3000',
     'http://127.0.0.1:3000',
     urls.baseUrl,
+    buildPublicBaseUrl(urls.serverIp, urls.webPort),
     `http://${urls.serverIp}:5173`,
-    `http://${urls.serverIp}:${urls.webPort}`,
     `http://${urls.serverIp}:3000`,
     `http://${urls.detectedIp}:5173`,
     `http://${urls.detectedIp}:3000`,

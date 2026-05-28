@@ -91,3 +91,56 @@ resolve_server_ip() {
 
   detect_server_ip
 }
+
+# http://192.168.5.102:8080 — يوحّد المنفذ مع STREAMRELAY_HTTP_PORT
+public_base_url() {
+  local ip="$1"
+  local port="${2:-80}"
+  port="${port// /}"
+  [ -n "$port" ] || port="80"
+  if [ "$port" = "80" ]; then
+    echo "http://${ip}"
+  else
+    echo "http://${ip}:${port}"
+  fi
+}
+
+read_http_port() {
+  local install_dir="${1:-.}"
+  local port
+  port="$(grep '^STREAMRELAY_HTTP_PORT=' "${install_dir}/.env" 2>/dev/null | cut -d= -f2- | tr -d '[:space:]' || true)"
+  [ -n "$port" ] || port="80"
+  echo "$port"
+}
+
+allowed_origins_for() {
+  local base_url="$1"
+  echo "${base_url},http://localhost,http://127.0.0.1,http://localhost:5173,http://127.0.0.1:5173"
+}
+
+sync_env_public_urls() {
+  local install_dir="$1"
+  local ip="$2"
+  local port="${3:-$(read_http_port "$install_dir")}"
+  local base_url
+  base_url="$(public_base_url "$ip" "$port")"
+
+  set_env_key() {
+    local key="$1"
+    local val="$2"
+    local env_file="${install_dir}/.env"
+    if grep -q "^${key}=" "$env_file" 2>/dev/null; then
+      sed -i "s|^${key}=.*|${key}=${val}|" "$env_file"
+    else
+      echo "${key}=${val}" >> "$env_file"
+    fi
+  }
+
+  set_env_key STREAMRELAY_HTTP_PORT "$port"
+  set_env_key SERVER_IP "$ip"
+  set_env_key PUBLIC_BASE_URL "$base_url"
+  set_env_key HLS_BASE_URL "${base_url}/hls"
+  set_env_key RTMP_INGEST_URL "rtmp://${ip}:1935/live"
+  set_env_key ALLOWED_ORIGINS "$(allowed_origins_for "$base_url")"
+  echo "$base_url"
+}

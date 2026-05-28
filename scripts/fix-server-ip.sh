@@ -16,34 +16,20 @@ cd "$INSTALL_DIR"
 
 SERVER_IP="$(resolve_server_ip "$INSTALL_DIR")"
 SERVER_LAN_SUBNET="$(ip_to_subnet "$SERVER_IP")"
-HTTP_PORT="$(grep '^STREAMRELAY_HTTP_PORT=' .env 2>/dev/null | cut -d= -f2- || echo 80)"
-HTTP_PORT="${HTTP_PORT:-80}"
+HTTP_PORT="$(read_http_port "$INSTALL_DIR")"
+BASE_URL="$(sync_env_public_urls "$INSTALL_DIR" "$SERVER_IP" "$HTTP_PORT")"
 
-if [ "$HTTP_PORT" = "80" ]; then
-  BASE_URL="http://${SERVER_IP}"
+if grep -q '^SERVER_LAN_SUBNET=' .env 2>/dev/null; then
+  sed -i "s|^SERVER_LAN_SUBNET=.*|SERVER_LAN_SUBNET=${SERVER_LAN_SUBNET}|" .env
 else
-  BASE_URL="http://${SERVER_IP}:${HTTP_PORT}"
+  echo "SERVER_LAN_SUBNET=${SERVER_LAN_SUBNET}" >> .env
 fi
 
 echo "=== IP السيرفر: ${SERVER_IP} ==="
 echo "=== الشبكة: ${SERVER_LAN_SUBNET} ==="
+echo "=== المنفذ: ${HTTP_PORT} ==="
 echo "=== الرابط: ${BASE_URL} ==="
-
-set_env() {
-  local key="$1"
-  local val="$2"
-  if grep -q "^${key}=" .env; then
-    sed -i "s|^${key}=.*|${key}=${val}|" .env
-  else
-    echo "${key}=${val}" >> .env
-  fi
-}
-
-set_env SERVER_IP "$SERVER_IP"
-set_env SERVER_LAN_SUBNET "$SERVER_LAN_SUBNET"
-set_env PUBLIC_BASE_URL "$BASE_URL"
-set_env HLS_BASE_URL "${BASE_URL}/hls"
-set_env RTMP_INGEST_URL "rtmp://${SERVER_IP}:1935/live"
+echo "=== لوحة الإدارة: ${BASE_URL}/login ==="
 
 if [ "$NO_RESTART" = "--no-restart" ]; then
   echo "=== تم تحديث .env (بدون إعادة تشغيل) ==="
