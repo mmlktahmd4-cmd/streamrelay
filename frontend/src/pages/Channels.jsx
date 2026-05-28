@@ -9,6 +9,7 @@ import {
   downloadViewerPlaylist,
   duplicateChannel,
   bulkUpdateChannels,
+  bulkStreamAction,
   getCategoriesFull,
 } from '../api/client';
 import { useAuth } from '../context/AuthContext';
@@ -60,6 +61,31 @@ export default function Channels() {
   const toggleSelectAll = () => {
     if (selected.size === channels.length) setSelected(new Set());
     else setSelected(new Set(channels.map((ch) => ch.id)));
+  };
+
+  const applyBulkStream = async (action, all = false) => {
+    const labels = { start: 'تشغيل', stop: 'إيقاف', restart: 'إعادة تشغيل' };
+    if (!all && selected.size === 0) {
+      alert('حدد قنوات أولاً أو استخدم "على الكل"');
+      return;
+    }
+    const scope = all ? 'كل القنوات' : `${selected.size} قناة`;
+    if (!confirm(`${labels[action]} ${scope}؟`)) return;
+
+    setBulkLoading(true);
+    try {
+      const payload = all
+        ? { all: true, action }
+        : { ids: [...selected], action };
+      const { data } = await bulkStreamAction(payload);
+      alert(`تم جدولة ${labels[action]} لـ ${data.queued} قناة`);
+      setSelected(new Set());
+      await fetchChannels();
+    } catch (err) {
+      alert(err.response?.data?.error || 'فشل تنفيذ الإجراء');
+    } finally {
+      setBulkLoading(false);
+    }
   };
 
   const applyBulk = async (all = false) => {
@@ -138,33 +164,55 @@ export default function Channels() {
       </div>
 
       {isOperator && channels.length > 0 && (
-        <div className="card mb-4 p-4 flex flex-col lg:flex-row lg:items-end gap-3">
-          <div className="flex items-center gap-2 text-sm text-slate-600">
+        <div className="card mb-4 p-4 space-y-3">
+          <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
             <CheckSquare className="w-4 h-4" />
             <button type="button" className="underline" onClick={toggleSelectAll}>
               {selected.size === channels.length ? 'إلغاء التحديد' : 'تحديد الكل'}
             </button>
             <span className="text-slate-400">({selected.size} محدد)</span>
           </div>
-          <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <select className="input py-2 text-sm" value={bulkCategory} onChange={(e) => setBulkCategory(e.target.value)}>
-              <option value="">— تغيير القسم —</option>
-              <option value="__none__">بدون قسم</option>
-              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-            <select className="input py-2 text-sm" value={bulkPublic} onChange={(e) => setBulkPublic(e.target.value)}>
-              <option value="">— الظهور —</option>
-              <option value="true">عامة للمشاهدين</option>
-              <option value="false">خاصة</option>
-            </select>
+
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="btn btn-secondary btn-sm" disabled={bulkLoading} onClick={() => applyBulkStream('start', false)}>
+              <Play className="w-3.5 h-3.5" /> تشغيل المحدد
+            </button>
+            <button type="button" className="btn btn-secondary btn-sm" disabled={bulkLoading} onClick={() => applyBulkStream('stop', false)}>
+              <Square className="w-3.5 h-3.5" /> إيقاف المحدد
+            </button>
+            <button type="button" className="btn btn-secondary btn-sm" disabled={bulkLoading} onClick={() => applyBulkStream('restart', false)}>
+              <RotateCcw className="w-3.5 h-3.5" /> إعادة تشغيل المحدد
+            </button>
+            <span className="hidden sm:inline w-px h-8 bg-slate-200 mx-1" />
+            <button type="button" className="btn btn-primary btn-sm" disabled={bulkLoading} onClick={() => applyBulkStream('start', true)}>
+              <Play className="w-3.5 h-3.5" /> تشغيل الكل
+            </button>
+            <button type="button" className="btn btn-primary btn-sm" disabled={bulkLoading} onClick={() => applyBulkStream('stop', true)}>
+              <Square className="w-3.5 h-3.5" /> إيقاف الكل
+            </button>
           </div>
-          <div className="flex gap-2">
-            <button type="button" className="btn btn-secondary btn-sm" disabled={bulkLoading} onClick={() => applyBulk(false)}>
-              تطبيق على المحدد
-            </button>
-            <button type="button" className="btn btn-primary btn-sm" disabled={bulkLoading} onClick={() => applyBulk(true)}>
-              تطبيق على كل القنوات
-            </button>
+
+          <div className="flex flex-col lg:flex-row lg:items-end gap-3 pt-2 border-t border-slate-100">
+            <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <select className="input py-2 text-sm" value={bulkCategory} onChange={(e) => setBulkCategory(e.target.value)}>
+                <option value="">— تغيير القسم —</option>
+                <option value="__none__">بدون قسم</option>
+                {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <select className="input py-2 text-sm" value={bulkPublic} onChange={(e) => setBulkPublic(e.target.value)}>
+                <option value="">— الظهور —</option>
+                <option value="true">عامة للمشاهدين</option>
+                <option value="false">خاصة</option>
+              </select>
+            </div>
+            <div className="flex gap-2">
+              <button type="button" className="btn btn-secondary btn-sm" disabled={bulkLoading} onClick={() => applyBulk(false)}>
+                تطبيق على المحدد
+              </button>
+              <button type="button" className="btn btn-primary btn-sm" disabled={bulkLoading} onClick={() => applyBulk(true)}>
+                تطبيق على كل القنوات
+              </button>
+            </div>
           </div>
         </div>
       )}

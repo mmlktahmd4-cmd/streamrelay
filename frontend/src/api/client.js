@@ -98,6 +98,7 @@ export const importM3U = (content, options = {}) =>
 
 export const duplicateChannel = (id) => api.post(`/channels/${id}/duplicate`, {});
 export const bulkUpdateChannels = (data) => api.post('/channels/bulk-update', data);
+export const bulkStreamAction = (data) => api.post('/channels/bulk-action', data, { timeout: 120000 });
 export const getCategories = () => api.get('/channels/meta/categories');
 export const getChannelLogs = (id, params) => api.get(`/channels/${id}/logs`, { params });
 

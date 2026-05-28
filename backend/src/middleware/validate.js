@@ -125,6 +125,14 @@ export const bulkUpdateChannelsSchema = z.object({
   message: 'Provide ids or set all=true',
 });
 
+export const bulkStreamActionSchema = z.object({
+  action: z.enum(['start', 'stop', 'restart']),
+  ids: z.array(z.string().uuid()).optional(),
+  all: z.boolean().optional(),
+}).refine((data) => data.all || (data.ids && data.ids.length > 0), {
+  message: 'Provide ids or set all=true',
+});
+
 export const updateMovieSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   description: z.preprocess(

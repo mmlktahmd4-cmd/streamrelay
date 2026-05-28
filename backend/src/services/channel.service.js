@@ -160,6 +160,52 @@ export async function bulkUpdateChannels({ ids, all, updates }) {
   return { updated: result.rowCount, ids: result.rows.map((r) => r.id) };
 }
 
+export async function bulkStreamAction({ action, ids, all }) {
+  let channelRows;
+
+  if (all) {
+    const result = await query(
+      `SELECT id, name, status FROM channels WHERE is_active = true ORDER BY sort_order, name`
+    );
+    channelRows = result.rows;
+  } else {
+    const result = await query(
+      `SELECT id, name, status FROM channels WHERE is_active = true AND id = ANY($1::uuid[])`,
+      [ids]
+    );
+    channelRows = result.rows;
+  }
+
+  if (channelRows.length === 0) {
+    return { queued: 0, action, total: 0 };
+  }
+
+  const { getQueue } = await import('./queue.service.js');
+  const queue = getQueue();
+  const jobName = action === 'start'
+    ? 'start-channel'
+    : action === 'stop'
+      ? 'stop-channel'
+      : 'restart-channel';
+
+  let queued = 0;
+  for (let i = 0; i < channelRows.length; i += 1) {
+    const channel = channelRows[i];
+    const data = action === 'stop'
+      ? { channelId: channel.id, options: { manual: true } }
+      : { channelId: channel.id };
+
+    await queue.add(jobName, data, {
+      delay: i * 300,
+      removeOnComplete: true,
+      removeOnFail: 50,
+    });
+    queued += 1;
+  }
+
+  return { queued, action, total: channelRows.length };
+}
+
 export async function deleteChannel(id) {
   const { cancelChannelJobs } = await import('./queue.service.js');
   await cancelChannelJobs(id);

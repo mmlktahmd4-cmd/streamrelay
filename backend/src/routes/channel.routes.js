@@ -2,7 +2,7 @@ import * as channelService from '../services/channel.service.js';
 import { runStreamJob } from '../services/queue.service.js';
 import * as categoryService from '../services/category.service.js';
 import { generateSignedUrl } from '../utils/crypto.js';
-import { validate, createChannelSchema, updateChannelSchema, importM3USchema, paginationSchema, bulkUpdateChannelsSchema } from '../middleware/validate.js';
+import { validate, createChannelSchema, updateChannelSchema, importM3USchema, paginationSchema, bulkUpdateChannelsSchema, bulkStreamActionSchema } from '../middleware/validate.js';
 import { requireMinRole } from '../middleware/auth.js';
 
 export default async function channelRoutes(fastify) {
@@ -39,6 +39,17 @@ export default async function channelRoutes(fastify) {
   }, async (request, reply) => {
     try {
       return await channelService.bulkUpdateChannels(request.body);
+    } catch (err) {
+      return reply.status(400).send({ error: err.message });
+    }
+  });
+
+  // Bulk start / stop / restart (must be before /:id)
+  fastify.post('/bulk-action', {
+    preHandler: [requireMinRole('operator'), validate(bulkStreamActionSchema)],
+  }, async (request, reply) => {
+    try {
+      return await channelService.bulkStreamAction(request.body);
     } catch (err) {
       return reply.status(400).send({ error: err.message });
     }
