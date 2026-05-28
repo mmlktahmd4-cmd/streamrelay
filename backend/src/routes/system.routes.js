@@ -3,9 +3,11 @@ import { getHealthSummary } from '../services/health.service.js';
 import * as channelService from '../services/channel.service.js';
 import * as serverRestart from '../services/server-restart.service.js';
 import { getPublicUrls } from '../services/public-url.service.js';
-import { getOnlineUsersCount, getOnlineUsers } from '../services/online-presence.service.js';
+import { getOnlineViewersCount, getOnlineViewers } from '../services/online-presence.service.js';
+import { getSiteConfig, saveSiteConfig } from '../services/site-config.service.js';
 import { getBandwidthStats } from '../services/bandwidth.service.js';
 import { requireMinRole } from '../middleware/auth.js';
+import { validate, siteConfigSchema } from '../middleware/validate.js';
 import { config } from '../config/index.js';
 import { query } from '../db/pool.js';
 
@@ -65,13 +67,17 @@ export default async function systemRoutes(fastify) {
       }
 
       const bandwidth = await getBandwidthStats(runningChannels);
+      const [onlineCount, onlineList] = await Promise.all([
+        getOnlineViewersCount(),
+        getOnlineViewers(),
+      ]);
 
       return {
         channels: channelStats,
         total_channels: Object.values(channelStats).reduce((a, b) => a + b, 0),
         active_users: parseInt(users.rows[0].count, 10),
-        online_users: getOnlineUsersCount(),
-        online_users_list: getOnlineUsers().map((u) => ({
+        online_users: onlineCount,
+        online_users_list: onlineList.map((u) => ({
           username: u.username,
           role: u.role,
           ip: u.ip,
@@ -98,6 +104,20 @@ export default async function systemRoutes(fastify) {
     protectedRoutes.get('/network-urls', {
       preHandler: [requireMinRole('operator')],
     }, async () => serverRestart.getNetworkStatus());
+
+    protectedRoutes.get('/site-config', {
+      preHandler: [requireMinRole('operator')],
+    }, async () => getSiteConfig());
+
+    protectedRoutes.put('/site-config', {
+      preHandler: [requireMinRole('admin'), validate(siteConfigSchema)],
+    }, async (request, reply) => {
+      try {
+        return await saveSiteConfig(request.body);
+      } catch (err) {
+        return reply.status(400).send({ error: err.message || 'تعذّر حفظ إعدادات الدومين' });
+      }
+    });
 
     // Logs
     protectedRoutes.get('/logs', async (request) => {

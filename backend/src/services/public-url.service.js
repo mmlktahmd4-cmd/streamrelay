@@ -129,13 +129,36 @@ async function loadMikrotikSettings() {
   }
 }
 
-function buildCache(mikrotik) {
+async function loadSiteSettings() {
+  try {
+    const result = await query(`SELECT value FROM settings WHERE key = 'site'`);
+    return result.rows[0]?.value || {};
+  } catch {
+    return {};
+  }
+}
+
+function normalizePublicDomain(input) {
+  let value = String(input || '').trim().toLowerCase();
+  if (!value) return '';
+  value = value.replace(/^https?:\/\//, '');
+  value = value.replace(/\/.*$/, '');
+  value = value.replace(/:\d+$/, '');
+  return value;
+}
+
+function buildCache(mikrotik, site = {}) {
   const homeSubnet = getHomeSubnet(mikrotik);
   const detectedIp = detectPhysicalLanIp(homeSubnet);
   const { ip: serverIp, source } = resolveServerIp(mikrotik);
   const webPort = resolveWebPort(mikrotik);
   const apiPort = mikrotik.api_port || config.port;
-  const baseUrl = normalizeConfiguredBaseUrl(process.env.PUBLIC_BASE_URL, serverIp, webPort);
+  const publicDomain = normalizePublicDomain(site.public_domain);
+  const useHttps = !!site.use_https;
+  const protocol = useHttps ? 'https' : 'http';
+  const baseUrl = publicDomain
+    ? buildPublicBaseUrl(publicDomain, webPort, protocol)
+    : normalizeConfiguredBaseUrl(process.env.PUBLIC_BASE_URL, serverIp, webPort);
   const hlsBase = `${baseUrl}/api/hls`;
 
   return {
@@ -144,6 +167,8 @@ function buildCache(mikrotik) {
     homeSubnet,
     webPort,
     apiPort,
+    publicDomain,
+    useHttps,
     baseUrl,
     hlsBase,
     viewerUrl: `${baseUrl}/watch/login`,
@@ -154,8 +179,9 @@ function buildCache(mikrotik) {
 
 export async function refreshPublicUrlCache({ syncUrls = true } = {}) {
   const mikrotik = await loadMikrotikSettings();
+  const site = await loadSiteSettings();
   const previousIp = cache?.serverIp;
-  cache = buildCache(mikrotik);
+  cache = buildCache(mikrotik, site);
   lastWatchedIp = cache.serverIp;
 
   if (syncUrls) {
@@ -202,6 +228,14 @@ export function getAllowedOrigins() {
     `http://${urls.detectedIp}:3000`,
   ];
 
+  if (urls.publicDomain) {
+    defaults.push(buildPublicBaseUrl(urls.publicDomain, urls.webPort, urls.useHttps ? 'https' : 'http'));
+    defaults.push(`http://${urls.publicDomain}`);
+    if (urls.useHttps) {
+      defaults.push(`https://${urls.publicDomain}`);
+    }
+  }
+
   return [...new Set([...fromEnv, ...defaults])];
 }
 
@@ -211,6 +245,10 @@ export function isOriginAllowed(origin) {
 
   try {
     const { hostname } = new URL(origin);
+    const urls = getPublicUrls();
+    if (urls.publicDomain && (hostname === urls.publicDomain || hostname === `www.${urls.publicDomain}`)) {
+      return true;
+    }
     if (config.env === 'development') {
       return hostname === 'localhost'
         || hostname === '127.0.0.1'
@@ -251,7 +289,8 @@ export async function syncMediaOutputUrls() {
 async function watchNetworkChange() {
   const urls = getPublicUrls();
   const mikrotik = await loadMikrotikSettings();
-  const next = buildCache(mikrotik);
+  const site = await loadSiteSettings();
+  const next = buildCache(mikrotik, site);
 
   if (next.serverIp === urls.serverIp && next.baseUrl === urls.baseUrl) {
     lastWatchedIp = next.serverIp;

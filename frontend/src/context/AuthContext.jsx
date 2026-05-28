@@ -78,7 +78,7 @@ export function AuthProvider({ children }) {
   }, [loadUser]);
 
   useEffect(() => {
-    if (!user) return undefined;
+    if (!user || user.role !== 'viewer') return undefined;
     const ping = () => pingPresence().catch(() => {});
     ping();
     const interval = setInterval(ping, 45000);

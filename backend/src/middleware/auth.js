@@ -1,5 +1,4 @@
 import * as authService from '../services/auth.service.js';
-import { touchOnlineUser } from '../services/online-presence.service.js';
 
 const ROLE_HIERARCHY = { admin: 3, operator: 2, viewer: 1 };
 
@@ -22,7 +21,6 @@ export async function authenticate(request, reply) {
           scopes: apiToken.scopes,
           isApiToken: true,
         };
-        touchOnlineUser(request.user, { ip: request.ip });
         return;
       }
 
@@ -37,8 +35,6 @@ export async function authenticate(request, reply) {
           });
         }
       }
-
-      touchOnlineUser(request.user, { ip: request.ip });
     } else {
       return reply.status(401).send({ error: 'Authentication required' });
     }

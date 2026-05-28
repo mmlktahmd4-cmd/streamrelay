@@ -58,7 +58,8 @@ export async function clearLoginSession(userId) {
 
 export async function createUser({ username, password, role = 'viewer', max_connections, maxConnections, expires_at }) {
   const passwordHash = await hashPassword(password);
-  const connections = max_connections ?? maxConnections ?? 1;
+  let connections = max_connections ?? maxConnections ?? 1;
+  if (role === 'viewer') connections = 1;
   const result = await query(
     `INSERT INTO users (username, password_hash, role, max_connections, expires_at)
      VALUES ($1, $2, $3, $4, $5)
@@ -87,6 +88,14 @@ export async function listUsers({ page = 1, limit = 20 } = {}) {
 }
 
 export async function updateUser(id, fields) {
+  const existing = await findUserById(id);
+  if (!existing) return null;
+
+  const role = fields.role ?? existing.role;
+  if (role === 'viewer') {
+    fields.max_connections = 1;
+  }
+
   const allowed = ['role', 'is_active', 'max_connections', 'allowed_ips', 'expires_at'];
   const sets = [];
   const values = [];

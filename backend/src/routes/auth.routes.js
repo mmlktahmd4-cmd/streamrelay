@@ -1,5 +1,5 @@
 import * as authService from '../services/auth.service.js';
-import { touchOnlineUser } from '../services/online-presence.service.js';
+import { touchViewerPresence } from '../services/online-presence.service.js';
 
 function loginError(reply, statusCode, error, reason) {
   return reply.status(statusCode).send({ error, reason });
@@ -99,7 +99,7 @@ export default async function authRoutes(fastify) {
 
     await authService.updateLastLogin(user.id);
     await authService.logAudit(user.id, 'login', 'user', user.id, request.ip, request.headers['user-agent']);
-    touchOnlineUser(
+    await touchViewerPresence(
       { id: user.id, username: user.username, role: user.role },
       { ip: request.ip }
     );
@@ -179,7 +179,9 @@ export default async function authRoutes(fastify) {
   });
 
   fastify.post('/presence', { preHandler: [fastify.authenticate] }, async (request) => {
-    touchOnlineUser(request.user, { ip: request.ip });
+    if (request.user.role === 'viewer') {
+      await touchViewerPresence(request.user, { ip: request.ip });
+    }
     return { ok: true };
   });
 }

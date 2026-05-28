@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { clearAuthStorage, getLoginPath, isAdminLoginPage } from '../utils/authStorage';
+import { clearAuthStorage, getLoginPath, isAdminLoginPage, isViewerLoginPage } from '../utils/authStorage';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
@@ -153,6 +153,8 @@ export const getHealth = () => api.get('/health');
 export const refreshNetwork = () => api.post('/refresh-network');
 export const restartServer = () => api.post('/restart', {}, { timeout: 15000 });
 export const getNetworkUrls = () => api.get('/network-urls');
+export const getSiteConfig = () => api.get('/site-config');
+export const saveSiteConfig = (data) => api.put('/site-config', data);
 
 // MikroTik
 export const getMikrotikInfo = () => api.get('/mikrotik/info');

@@ -118,6 +118,7 @@ export default function Users() {
       <div className="admin-alert admin-alert-info mb-5 text-sm">
         كل عميل يدخل بـ <strong>اسم المستخدم</strong> و<strong>كلمة المرور</strong> فقط.
         حدّد <strong>تاريخ الانتهاء</strong> — بعدها لا يستطيع الدخول.
+        كل حساب مشاهد يعمل على <strong>جهاز واحد فقط</strong> — تسجيل دخول جديد يلغي الجلسة السابقة.
       </div>
 
       {showForm && !editId && (

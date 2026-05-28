@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { getDashboard, getBandwidth, restartServer, getHealth, refreshNetwork } from '../api/client';
+import { getDashboard, getBandwidth, restartServer, getHealth, refreshNetwork, getSiteConfig, saveSiteConfig } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import {
@@ -92,6 +92,8 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [restarting, setRestarting] = useState(false);
   const [networkMsg, setNetworkMsg] = useState('');
+  const [siteForm, setSiteForm] = useState({ public_domain: '', use_https: false });
+  const [siteSaving, setSiteSaving] = useState(false);
 
   const fetchDashboard = useCallback(async () => {
     try {
@@ -108,6 +110,13 @@ export default function Dashboard() {
         if (net?.urls) {
           setData((prev) => (prev ? { ...prev, network: net.urls } : prev));
         }
+      } catch { /* ignore */ }
+      try {
+        const { data: site } = await getSiteConfig();
+        setSiteForm({
+          public_domain: site.public_domain || '',
+          use_https: !!site.use_https,
+        });
       } catch { /* ignore */ }
       fetchDashboard();
     };
@@ -165,6 +174,34 @@ export default function Dashboard() {
     setRestarting(false);
   };
 
+  const handleSaveSiteConfig = async () => {
+    setSiteSaving(true);
+    setNetworkMsg('جاري حفظ الدومين...');
+    try {
+      const { data: saved } = await saveSiteConfig(siteForm);
+      setSiteForm({
+        public_domain: saved.public_domain || '',
+        use_https: !!saved.use_https,
+      });
+      setData((prev) => (prev ? {
+        ...prev,
+        network: {
+          ...(prev.network || {}),
+          baseUrl: saved.active_base_url,
+          viewerUrl: saved.viewer_url,
+          adminUrl: saved.admin_url,
+          publicDomain: saved.public_domain,
+          useHttps: saved.use_https,
+        },
+      } : prev));
+      setNetworkMsg('تم حفظ الدومين وتحديث الروابط');
+      fetchDashboard();
+    } catch (err) {
+      setNetworkMsg(err.response?.data?.error || 'تعذّر حفظ الدومين');
+    }
+    setSiteSaving(false);
+  };
+
   if (loading) return <LoadingSpinner className="py-24" />;
 
   const channels = data?.channels || {};
@@ -208,12 +245,49 @@ export default function Dashboard() {
               {network.serverIp && (
                 <div className="text-sm text-slate-700 space-y-1">
                   <p><strong>IP الجهاز:</strong> <span className="font-mono">{network.serverIp}</span></p>
+                  {network.publicDomain && (
+                    <p><strong>الدومين العام:</strong> <span className="font-mono">{network.publicDomain}</span></p>
+                  )}
                   <p><strong>رابط HLS:</strong> <span className="font-mono text-xs">{network.hlsBase}</span></p>
                   <p><strong>رابط المشاهدة:</strong>{' '}
                     <a href={network.viewerUrl} target="_blank" rel="noreferrer" className="font-mono text-xs text-cyan-700 hover:underline">
                       {network.viewerUrl}
                     </a>
                   </p>
+                </div>
+              )}
+              {isAdmin && (
+                <div className="mt-4 pt-4 border-t border-cyan-200 space-y-3">
+                  <h3 className="text-sm font-bold text-slate-800">ربط دومين (DNS)</h3>
+                  <p className="text-xs text-slate-500">
+                    وجّه سجل A في DNS إلى IP السيرفر — الروابط العامة ستستخدم الدومين بدل IP.
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <input
+                      type="text"
+                      dir="ltr"
+                      className="input flex-1 font-mono text-sm"
+                      placeholder="tv.example.com"
+                      value={siteForm.public_domain}
+                      onChange={(e) => setSiteForm((prev) => ({ ...prev, public_domain: e.target.value }))}
+                    />
+                    <label className="inline-flex items-center gap-2 text-sm text-slate-600 shrink-0 px-2">
+                      <input
+                        type="checkbox"
+                        checked={siteForm.use_https}
+                        onChange={(e) => setSiteForm((prev) => ({ ...prev, use_https: e.target.checked }))}
+                      />
+                      HTTPS
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleSaveSiteConfig}
+                      disabled={siteSaving || restarting}
+                      className="btn btn-primary btn-sm shrink-0"
+                    >
+                      {siteSaving ? 'جاري الحفظ...' : 'حفظ الدومين'}
+                    </button>
+                  </div>
                 </div>
               )}
               {networkMsg && (
@@ -259,7 +333,7 @@ export default function Dashboard() {
           sub={bw.total_egress_session_bytes ? formatBytes(bw.total_egress_session_bytes) : 'للمشاهدين'}
           color="red"
         />
-        <StatCard icon={Wifi} label="متصلين الآن" value={data?.online_users || 0} sub="أونلاين" color="green" />
+        <StatCard icon={Wifi} label="مشاهدون متصلون" value={data?.online_users || 0} sub="جهاز واحد لكل حساب" color="green" />
         <StatCard icon={Users} label="إجمالي الحسابات" value={data?.active_users || 0} color="brand" />
       </div>
 
@@ -336,7 +410,7 @@ export default function Dashboard() {
       {(data?.online_users_list?.length > 0) && (
         <div className="card mb-6">
           <h2 className="text-base font-bold text-slate-800 mb-3 flex items-center gap-2">
-            <Wifi className="w-5 h-5 text-emerald-600" /> المستخدمون المتصلون الآن
+            <Wifi className="w-5 h-5 text-emerald-600" /> المشاهدون المتصلون الآن
           </h2>
           <div className="flex flex-wrap gap-2">
             {data.online_users_list.map((u) => (
@@ -346,7 +420,7 @@ export default function Dashboard() {
               >
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 <span className="font-medium text-slate-800">{u.username}</span>
-                <span className="text-xs text-slate-400">{u.role === 'viewer' ? 'مشاهد' : u.role === 'admin' ? 'مدير' : 'مشغّل'}</span>
+                <span className="text-xs text-slate-400">مشاهد</span>
                 {u.ip && <span className="text-xs font-mono text-slate-400">{u.ip}</span>}
               </span>
             ))}

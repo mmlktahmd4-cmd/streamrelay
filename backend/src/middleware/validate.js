@@ -39,6 +39,9 @@ export const createUserSchema = z.object({
   if (data.role === 'viewer' && !data.expires_at) {
     ctx.addIssue({ code: 'custom', message: 'تاريخ الانتهاء مطلوب للمشاهدين', path: ['expires_at'] });
   }
+  if (data.role === 'viewer' && data.max_connections > 1) {
+    ctx.addIssue({ code: 'custom', message: 'المشاهد مسموح له بجهاز واحد فقط', path: ['max_connections'] });
+  }
 });
 
 export const updateUserSchema = z.object({
@@ -47,6 +50,15 @@ export const updateUserSchema = z.object({
   is_active: z.boolean().optional(),
   max_connections: z.number().int().min(1).max(100).optional(),
   expires_at: expiresAtField.nullable(),
+}).superRefine((data, ctx) => {
+  if (data.max_connections && data.max_connections > 1 && data.role === 'viewer') {
+    ctx.addIssue({ code: 'custom', message: 'المشاهد مسموح له بجهاز واحد فقط', path: ['max_connections'] });
+  }
+});
+
+export const siteConfigSchema = z.object({
+  public_domain: z.string().max(253).default(''),
+  use_https: z.boolean().default(false),
 });
 
 export const createChannelSchema = z.object({
