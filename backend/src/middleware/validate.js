@@ -68,6 +68,20 @@ export const brandingSettingsSchema = z.object({
   vod_watch_notice: z.string().max(200).default('تشغيل فيلم من السيرفر المحلي'),
 });
 
+export const createServerSchema = z.object({
+  name: z.string().min(1).max(128),
+  hostname: z.string().min(1).max(255).regex(/^[a-zA-Z0-9._-]+$/),
+  ip_address: z.string().max(45).optional(),
+  role: z.enum(['full', 'api-only', 'stream-only']).default('stream-only'),
+  max_streams: z.coerce.number().int().min(1).max(1000).default(100),
+  hls_base_url: optionalUrl,
+  public_base_url: optionalUrl,
+});
+
+export const updateServerSchema = createServerSchema.partial().extend({
+  is_active: z.boolean().optional(),
+});
+
 export const uploadSessionSchema = z.object({
   filename: z.string().min(1).max(255),
   total_size: z.coerce.number().int().min(1).max(4 * 1024 * 1024 * 1024),
@@ -104,6 +118,7 @@ export const createChannelSchema = z.object({
   epg_id: z.string().optional(),
   sort_order: z.number().int().default(0),
   is_public: z.boolean().default(false),
+  server_id: z.string().uuid().nullable().optional(),
 });
 
 export const updateChannelSchema = createChannelSchema.partial();

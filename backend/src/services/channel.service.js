@@ -99,7 +99,7 @@ export async function updateChannel(id, data) {
   const allowed = [
     'name', 'description', 'logo_url', 'category_id', 'source_type', 'source_url',
     'backup_source_url', 'output_format', 'transcode_enabled', 'transcode_profile',
-    'auto_restart', 'epg_id', 'sort_order', 'is_active', 'is_public',
+    'auto_restart', 'epg_id', 'sort_order', 'is_active', 'is_public', 'server_id',
   ];
 
   const sets = [];
@@ -188,12 +188,15 @@ export async function bulkStreamAction({ action, ids, all }) {
       ? 'stop-channel'
       : 'restart-channel';
 
+  const { buildStreamJobPayload } = await import('./server.service.js');
   let queued = 0;
   for (let i = 0; i < channelRows.length; i += 1) {
     const channel = channelRows[i];
+    const actionType = action === 'stop' ? 'stop' : action === 'restart' ? 'restart' : 'start';
+    const payload = await buildStreamJobPayload(channel.id, actionType);
     const data = action === 'stop'
-      ? { channelId: channel.id, options: { manual: true } }
-      : { channelId: channel.id };
+      ? { ...payload, options: { manual: true } }
+      : payload;
 
     await queue.add(jobName, data, {
       delay: i * 300,

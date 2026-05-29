@@ -1,11 +1,21 @@
 import Bull from 'bull';
 import { config } from '../config/index.js';
+import { buildStreamJobPayload } from './server.service.js';
 import { createChildLogger } from '../utils/logger.js';
 
 const log = createChildLogger('queue');
 
 let streamQueue = null;
 let processorsRegistered = false;
+
+async function deferJobToTargetServer(job) {
+  if (!job.data?.targetServerId || job.data.targetServerId === config.serverId) {
+    return false;
+  }
+  await job.moveToDelayed(Date.now() + 2500);
+  log.debug({ jobId: job.id, target: job.data.targetServerId, local: config.serverId }, 'Job deferred to target server');
+  return true;
+}
 
 export function getQueue() {
   if (!streamQueue) {
@@ -33,22 +43,25 @@ export async function setupQueueProcessors() {
   const queue = getQueue();
 
   queue.process('start-channel', async (job) => {
+    if (await deferJobToTargetServer(job)) return { deferred: true };
     const { channelId } = job.data;
-    log.info({ channelId }, 'Processing start-channel job');
+    log.info({ channelId, serverId: config.serverId }, 'Processing start-channel job');
     const { startStream } = await import('./stream.service.js');
     return startStream(channelId);
   });
 
   queue.process('stop-channel', async (job) => {
+    if (await deferJobToTargetServer(job)) return { deferred: true };
     const { channelId, options = {} } = job.data;
-    log.info({ channelId }, 'Processing stop-channel job');
+    log.info({ channelId, serverId: config.serverId }, 'Processing stop-channel job');
     const { stopStream } = await import('./stream.service.js');
     return stopStream(channelId, options);
   });
 
   queue.process('restart-channel', async (job) => {
+    if (await deferJobToTargetServer(job)) return { deferred: true };
     const { channelId } = job.data;
-    log.info({ channelId }, 'Processing restart-channel job');
+    log.info({ channelId, serverId: config.serverId }, 'Processing restart-channel job');
     const channelService = await import('./channel.service.js');
     const channel = await channelService.getChannelById(channelId);
     if (!channel) {
@@ -109,7 +122,43 @@ export async function setupQueueProcessors() {
   log.info('Queue processors registered');
 }
 
-export async function runStreamJob(name, data, timeoutMs = 60000) {
+function jobActionFromName(name) {
+  if (name.startsWith('stop')) return 'stop';
+  if (name.startsWith('restart')) return 'restart';
+  return 'start';
+}
+
+export async function enqueueStreamJob(name, channelId, queueOpts = {}, extraData = {}) {
+  const payload = await buildStreamJobPayload(channelId, jobActionFromName(name));
+  const queue = getQueue();
+  return queue.add(name, { ...payload, ...extraData }, {
+    removeOnComplete: true,
+    removeOnFail: 50,
+    ...queueOpts,
+  });
+}
+
+export async function runStreamJob(name, channelId, extraData = {}, timeoutMs = 60000) {
+  const payload = await buildStreamJobPayload(channelId, jobActionFromName(name));
+  const queue = getQueue();
+  const job = await queue.add(name, { ...payload, ...extraData }, {
+    removeOnComplete: true,
+    removeOnFail: 50,
+    timeout: timeoutMs,
+  });
+
+  try {
+    return await job.finished();
+  } catch (err) {
+    const msg = err?.message || '';
+    if (msg.includes('timed out') || msg.includes('Timeout')) {
+      throw new Error('انتهت مهلة تشغيل القناة — تحقق أن خدمة worker تعمل أو أعد تشغيل السيرفر');
+    }
+    throw new Error(msg || `Stream job ${name} failed`);
+  }
+}
+
+export async function runStreamJobLegacy(name, data, timeoutMs = 60000) {
   const queue = getQueue();
   const job = await queue.add(name, data, {
     removeOnComplete: true,

@@ -187,10 +187,7 @@ export default async function channelRoutes(fastify) {
     preHandler: [requireMinRole('operator')],
   }, async (request, reply) => {
     try {
-      await runStreamJob('stop-channel', {
-        channelId: request.params.id,
-        options: { forDelete: true },
-      });
+      await runStreamJob('stop-channel', request.params.id, { options: { forDelete: true } });
     } catch {
       /* channel may already be stopped */
     }
@@ -219,7 +216,7 @@ export default async function channelRoutes(fastify) {
     preHandler: [requireMinRole('operator')],
   }, async (request, reply) => {
     try {
-      return await runStreamJob('start-channel', { channelId: request.params.id });
+      return await runStreamJob('start-channel', request.params.id);
     } catch (err) {
       return reply.status(500).send({ error: err.message });
     }
@@ -230,7 +227,7 @@ export default async function channelRoutes(fastify) {
     preHandler: [requireMinRole('operator')],
   }, async (request, reply) => {
     try {
-      return await runStreamJob('stop-channel', { channelId: request.params.id });
+      return await runStreamJob('stop-channel', request.params.id, { options: { manual: true } });
     } catch (err) {
       return reply.status(500).send({ error: err.message });
     }
@@ -241,7 +238,7 @@ export default async function channelRoutes(fastify) {
     preHandler: [requireMinRole('operator')],
   }, async (request, reply) => {
     try {
-      return await runStreamJob('restart-channel', { channelId: request.params.id });
+      return await runStreamJob('restart-channel', request.params.id);
     } catch (err) {
       return reply.status(500).send({ error: err.message });
     }

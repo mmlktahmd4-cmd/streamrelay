@@ -93,10 +93,10 @@ export async function scheduleAutoStart(channelId, { delay = null } = {}) {
 
   const delayMs = delay ?? config.streaming.restartCooldown;
 
-  await queue.add('start-channel', { channelId }, {
+  const { enqueueStreamJob } = await import('./queue.service.js');
+  await enqueueStreamJob('start-channel', channelId, {
     delay: delayMs,
     jobId,
-    removeOnComplete: true,
   });
 
   log.info({ channelId, delayMs }, 'Auto-start scheduled');
@@ -141,14 +141,10 @@ export async function scheduleAutoRestart(channelId) {
 
 
 
-  await queue.add('restart-channel', { channelId }, {
-
+  const { enqueueStreamJob } = await import('./queue.service.js');
+  await enqueueStreamJob('restart-channel', channelId, {
     delay: config.streaming.restartCooldown,
-
     jobId,
-
-    removeOnComplete: true,
-
   });
 
 
@@ -341,11 +337,12 @@ export async function startStream(channelId) {
 
   }
 
+  const { assertChannelAssignedToLocal, bindChannelToServer } = await import('./server.service.js');
+  const localServer = await assertChannelAssignedToLocal(channel);
 
+  if (activeProcesses.size >= localServer.max_streams) {
 
-  if (activeProcesses.size >= config.streaming.maxConcurrent) {
-
-    throw new Error('Maximum concurrent streams reached');
+    throw new Error('Maximum concurrent streams reached on this node');
 
   }
 
@@ -526,13 +523,13 @@ export async function startStream(channelId) {
 
   });
 
-
+  await bindChannelToServer(channelId, localServer, channel.slug);
 
   await query(
 
-    `INSERT INTO stream_sessions (channel_id, pid) VALUES ($1, $2)`,
+    `INSERT INTO stream_sessions (channel_id, server_id, pid) VALUES ($1, $2, $3)`,
 
-    [channelId, proc.pid]
+    [channelId, localServer.id, proc.pid]
 
   );
 
@@ -620,6 +617,9 @@ export async function stopStream(channelId, options = {}) {
   if (!forDelete) {
 
     await channelService.logStreamEvent(channelId, 'info', 'Stream stopped manually');
+
+    const { releaseChannelFromServer } = await import('./server.service.js');
+    await releaseChannelFromServer(channelId);
 
   } else {
 

@@ -22,6 +22,7 @@ import userRoutes from './routes/user.routes.js';
 import systemRoutes from './routes/system.routes.js';
 import mikrotikRoutes from './routes/mikrotik.routes.js';
 import categoryRoutes from './routes/category.routes.js';
+import serverRoutes from './routes/server.routes.js';
 
 const log = createChildLogger('server');
 
@@ -124,6 +125,7 @@ async function buildApp() {
   await app.register(systemRoutes, { prefix: '/api' });
   await app.register(mikrotikRoutes, { prefix: '/api/mikrotik' });
   await app.register(categoryRoutes, { prefix: '/api/categories' });
+  await app.register(serverRoutes, { prefix: '/api/servers' });
 
   app.addHook('onResponse', async (request, reply) => {
     if (reply.statusCode < 200 || reply.statusCode >= 400) return;

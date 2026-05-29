@@ -6,6 +6,7 @@ import { getPublicUrls } from '../services/public-url.service.js';
 import { getOnlineViewersCount, getOnlineViewers } from '../services/online-presence.service.js';
 import { getSiteConfig, saveSiteConfig } from '../services/site-config.service.js';
 import { getBranding, saveBranding } from '../services/branding.service.js';
+import { getClusterSummary } from '../services/server.service.js';
 import { getBandwidthStats } from '../services/bandwidth.service.js';
 import { requireMinRole } from '../middleware/auth.js';
 import { validate, siteConfigSchema, brandingSettingsSchema } from '../middleware/validate.js';
@@ -91,6 +92,7 @@ export default async function systemRoutes(fastify) {
         bandwidth,
         system: getSystemMetrics(),
         network: getPublicUrls(),
+        cluster: await getClusterSummary(),
       };
     });
 
@@ -153,12 +155,6 @@ export default async function systemRoutes(fastify) {
          ORDER BY al.created_at DESC LIMIT $1 OFFSET $2`,
         [limit, offset]
       );
-      return result.rows;
-    });
-
-    // Server nodes
-    protectedRoutes.get('/servers', async () => {
-      const result = await query('SELECT * FROM servers ORDER BY name');
       return result.rows;
     });
 

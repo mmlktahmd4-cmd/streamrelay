@@ -16,6 +16,7 @@ import Users from './pages/Users';
 import Mikrotik from './pages/Mikrotik';
 import DomainDns from './pages/DomainDns';
 import Settings from './pages/Settings';
+import ServersPage from './pages/Servers';
 import Categories from './pages/Categories';
 import Logs from './pages/Logs';
 import LoadingSpinner from './components/ui/LoadingSpinner';
@@ -88,6 +89,7 @@ export default function App() {
         <Route path="channels/:id/edit" element={<AdminRoute minRole="operator"><ChannelForm /></AdminRoute>} />
         <Route path="player/:id" element={<Player />} />
         <Route path="users" element={<AdminRoute minRole="admin"><Users /></AdminRoute>} />
+        <Route path="servers" element={<AdminRoute minRole="admin"><ServersPage /></AdminRoute>} />
         <Route path="domain" element={<AdminRoute minRole="admin"><DomainDns /></AdminRoute>} />
         <Route path="settings" element={<AdminRoute minRole="admin"><Settings /></AdminRoute>} />
         <Route path="mikrotik" element={<AdminRoute minRole="admin"><Mikrotik /></AdminRoute>} />

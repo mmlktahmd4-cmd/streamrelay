@@ -3,7 +3,7 @@ import { NavLink, Outlet, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { refreshNetwork } from '../api/client';
 import {
-  LayoutDashboard, Radio, Users, ScrollText, LogOut, Menu, X, Tv, Router, FolderOpen, Globe, Settings,
+  LayoutDashboard, Radio, Users, ScrollText, LogOut, Menu, X, Tv, Router, FolderOpen, Globe, Settings, Server,
 } from 'lucide-react';
 
 const navItems = [
@@ -11,6 +11,7 @@ const navItems = [
   { to: '/channels', icon: Radio, label: 'القنوات' },
   { to: '/categories', icon: FolderOpen, label: 'الأقسام', minRole: 'operator' },
   { to: '/users', icon: Users, label: 'المستخدمين', adminOnly: true },
+  { to: '/servers', icon: Server, label: 'سيرفرات البث', adminOnly: true },
   { to: '/settings', icon: Settings, label: 'الإعدادات', adminOnly: true },
   { to: '/domain', icon: Globe, label: 'ربط الدومين (DNS)', adminOnly: true },
   { to: '/mikrotik', icon: Router, label: 'ربط MikroTik', adminOnly: true },

@@ -46,15 +46,8 @@ export async function bootstrapAdmin() {
 }
 
 export async function bootstrapServer() {
-  const existing = await query('SELECT id FROM servers WHERE hostname = $1', [config.serverId]);
-  if (existing.rows.length > 0) return;
-
-  await query(
-    `INSERT INTO servers (name, hostname, role, max_streams)
-     VALUES ($1, $2, $3, $4)`,
-    [`Server ${config.serverId}`, config.serverId, config.serverRole, config.streaming.maxConcurrent]
-  );
-  log.info({ serverId: config.serverId }, 'Server node registered');
+  const { ensureLocalServerRecord } = await import('../services/server.service.js');
+  await ensureLocalServerRecord();
 }
 
 export async function runMigrations() {

@@ -24,11 +24,18 @@ export async function recoverStreamsOnStartup() {
 
   await new Promise((resolve) => setTimeout(resolve, delayMs));
 
+  const { getLocalServer } = await import('./server.service.js');
+  const localServer = await getLocalServer();
+
   const channels = await channelService.getChannelsForAutoStart();
   const activeMap = new Map(getActiveStreams().map((s) => [s.channelId, s]));
   let queued = 0;
 
   for (const channel of channels) {
+    if (localServer && channel.server_id && channel.server_id !== localServer.id) {
+      continue;
+    }
+
     if (!channelNeedsStart(channel, activeMap)) {
       if (channel.pid && checkProcessAlive(channel.pid)) {
         startBandwidthTracking(channel.id, channel.pid, channel.slug, channel.name);

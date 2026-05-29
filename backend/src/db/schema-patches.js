@@ -51,6 +51,13 @@ const PATCHES = [
     `,
     optional: true,
   },
+  {
+    id: '008_servers_hostname_unique',
+    sql: `
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_servers_hostname_unique ON servers(hostname);
+    `,
+    optional: true,
+  },
 ];
 
 export async function runSchemaPatches() {
