@@ -123,11 +123,13 @@ export async function runHealthChecks() {
 }
 
 export async function getHealthSummary() {
+  const { isChannelAssignedToLocalWorker } = await import('./server.service.js');
   const channels = await channelService.getRunningChannels();
   let healthy = 0;
   let unhealthy = 0;
 
   for (const channel of channels) {
+    if (!(await isChannelAssignedToLocalWorker(channel))) continue;
     const health = await checkChannelHealth(channel);
     if (health.healthy) healthy++;
     else unhealthy++;
