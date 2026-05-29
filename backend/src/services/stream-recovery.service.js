@@ -43,7 +43,7 @@ export async function recoverStreamsOnStartup() {
 
     if (!channelNeedsStart(channel, activeMap)) {
       if (channel.pid && checkProcessAlive(channel.pid)) {
-        startBandwidthTracking(channel.id, channel.pid, channel.slug, channel.name);
+        startBandwidthTracking(channel.id, channel.pid, channel.id, channel.name, channel.slug);
       }
       continue;
     }

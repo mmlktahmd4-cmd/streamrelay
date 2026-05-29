@@ -1,7 +1,7 @@
 import * as channelService from '../services/channel.service.js';
 import { runStreamJob } from '../services/queue.service.js';
 import * as categoryService from '../services/category.service.js';
-import { resolveHlsBaseForChannel, resolvePanelPlaybackBase, getServerById } from '../services/server.service.js';
+import { resolveHlsBaseForChannel, resolvePanelPlaybackBase, getServerById, getLocalServer } from '../services/server.service.js';
 import { generateSignedUrl } from '../utils/crypto.js';
 import { validate, createChannelSchema, updateChannelSchema, importM3USchema, paginationSchema, bulkUpdateChannelsSchema, bulkStreamActionSchema } from '../middleware/validate.js';
 import { requireMinRole } from '../middleware/auth.js';
@@ -127,24 +127,22 @@ export default async function channelRoutes(fastify) {
 
     const ttl = parseInt(request.query.ttl, 10) || undefined;
     const directBase = await resolveHlsBaseForChannel(channel);
-    const playBase = await resolvePanelPlaybackBase(channel);
-    const signed = generateSignedUrl(channel.id, ttl, playBase);
-    const directSigned = playBase !== directBase
-      ? generateSignedUrl(channel.id, ttl, playBase)
-      : signed;
+    const signed = generateSignedUrl(channel.id, ttl, directBase);
     const assignedServer = channel.server_id ? await getServerById(channel.server_id) : null;
+    const local = await getLocalServer();
+    const isRemote = !!(local && channel.server_id && channel.server_id !== local.id);
 
     return {
       ...signed,
-      direct_url: directSigned.url,
+      direct_url: signed.url,
       type: 'live',
-      relay: playBase !== directBase,
+      relay: false,
       stream_server: assignedServer?.name || null,
       stream_server_hostname: assignedServer?.hostname || null,
-      note: assignedServer
-        ? `المعاينة عبر الرئيسي — الرابط الخارجي على ${assignedServer.ip_address || directBase}`
-        : 'Local relay URL',
-      hls_base: playBase,
+      note: isRemote
+        ? `البث مباشر من «${assignedServer?.name}» (${assignedServer?.ip_address || directBase}) — توزيع الحمل`
+        : 'بث من السيرفر الرئيسي',
+      hls_base: directBase,
       direct_hls_base: directBase,
     };
   });

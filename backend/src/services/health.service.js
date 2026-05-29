@@ -16,7 +16,7 @@ export async function checkChannelHealth(channel) {
   };
 
   if (channel.output_format === 'hls') {
-    const hls = await probeHlsManifest(channel.slug);
+    const hls = await probeHlsManifest(channel.id);
     const procAlive = channel.pid ? checkProcessAlive(channel.pid) : false;
     result.checks.hls = hls;
     result.checks.process = { alive: procAlive, pid: channel.pid };

@@ -60,8 +60,8 @@ function rollingBps(prev, deltaBytes, now) {
   return { bps, window };
 }
 
-async function samplePullBandwidth(channelId, slug) {
-  const dir = path.join(config.streaming.hlsDir, slug);
+async function samplePullBandwidth(channelId, dirKey) {
+  const dir = path.join(config.streaming.hlsDir, dirKey);
   const now = Date.now();
   const prev = hlsSamples.get(channelId) || {
     fileStates: {},
@@ -190,9 +190,9 @@ async function buildSnapshot(runningChannels) {
   }
   runningChannels = localChannels;
 
-  slugToChannel = new Map(runningChannels.map((ch) => [ch.slug, ch]));
+  slugToChannel = new Map(runningChannels.map((ch) => [ch.id, ch]));
   const activeIds = new Set(runningChannels.map((ch) => ch.id));
-  const activeSlugs = new Set(runningChannels.map((ch) => ch.slug));
+  const activeKeys = new Set(runningChannels.map((ch) => ch.id));
 
   const channels = [];
   let totalPullBps = 0;
@@ -201,8 +201,8 @@ async function buildSnapshot(runningChannels) {
   let totalEgressSession = 0;
 
   for (const ch of runningChannels) {
-    const pull = await samplePullBandwidth(ch.id, ch.slug);
-    const egress = sampleEgressBandwidth(ch.slug);
+    const pull = await samplePullBandwidth(ch.id, ch.id);
+    const egress = sampleEgressBandwidth(ch.id);
 
     channels.push({
       channel_id: ch.id,
@@ -224,7 +224,7 @@ async function buildSnapshot(runningChannels) {
     totalEgressSession += egress.egress_session_bytes;
   }
 
-  pruneMaps(activeIds, activeSlugs);
+  pruneMaps(activeIds, activeKeys);
   const net = await sampleHostNetwork();
 
   latestSnapshot = {
@@ -395,8 +395,8 @@ async function pollTracker(channelId) {
     return;
   }
 
-  const pull = await samplePullBandwidth(channelId, tracker.slug);
-  const egress = sampleEgressBandwidth(tracker.slug);
+  const pull = await samplePullBandwidth(channelId, tracker.dirKey);
+  const egress = sampleEgressBandwidth(tracker.dirKey);
   tracker.bps = pull.pull_bps;
   tracker.sessionBytes = pull.pull_session_bytes;
 
@@ -413,13 +413,14 @@ async function pollTracker(channelId) {
   });
 }
 
-export function startBandwidthTracking(channelId, pid, slug, name) {
+export function startBandwidthTracking(channelId, pid, dirKey, name, displaySlug = null) {
   stopBandwidthTracking(channelId);
 
   const tracker = {
     pid,
-    slug,
-    name: name || slug,
+    dirKey,
+    slug: displaySlug || dirKey,
+    name: name || displaySlug || dirKey,
     bps: 0,
     sessionBytes: 0,
     startedAt: Date.now(),

@@ -223,7 +223,7 @@ function buildFFmpegArgs(channel) {
 
     case 'hls': {
 
-      const hlsDir = path.join(config.streaming.hlsDir, channel.slug);
+      const hlsDir = path.join(config.streaming.hlsDir, channel.id);
 
       args.push(
 
@@ -287,7 +287,7 @@ async function ensureOutputDir(channel) {
 
   if (channel.output_format === 'hls') {
 
-    await fs.mkdir(path.join(config.streaming.hlsDir, channel.slug), { recursive: true });
+    await fs.mkdir(path.join(config.streaming.hlsDir, channel.id), { recursive: true });
 
   }
 
@@ -537,7 +537,7 @@ export async function startStream(channelId) {
 
   await channelService.logStreamEvent(channelId, 'info', `Stream started PID=${proc.pid}`);
 
-  startBandwidthTracking(channelId, proc.pid, channel.slug, channel.name);
+  startBandwidthTracking(channelId, proc.pid, channel.id, channel.name, channel.slug);
 
   return { status: 'running', pid: proc.pid };
 

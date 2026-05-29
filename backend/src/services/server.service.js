@@ -603,11 +603,8 @@ export async function resolveHlsBaseForChannel(channel) {
 }
 
 export async function resolvePanelPlaybackBase(channel) {
-  const directBase = await resolveHlsBaseForChannel(channel);
-  const local = await getLocalServer();
-  const isRemote = !!(local && channel?.server_id && channel.server_id !== local.id);
-  if (isRemote) return getPublicUrls().hlsBase;
-  return directBase;
+  // القناة تُبثّ مباشرة من سيرفرها (توزيع الحمل) — البعيد على IP الخاص به، المحلي على الرئيسي
+  return resolveHlsBaseForChannel(channel);
 }
 
 export async function assignServerForChannel(channelId) {

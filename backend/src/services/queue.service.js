@@ -142,13 +142,18 @@ export async function setupQueueProcessors() {
     const { query: dbQuery } = await import('../db/pool.js');
 
     const stopped = await dbQuery(
-      `SELECT slug FROM channels WHERE status = 'stopped' AND updated_at < NOW() - INTERVAL '1 hour'`
+      `SELECT id, slug FROM channels WHERE status = 'stopped' AND updated_at < NOW() - INTERVAL '1 hour'`
     );
 
     for (const row of stopped.rows) {
-      const dir = path.join(config.streaming.hlsDir, row.slug);
+      const dir = path.join(config.streaming.hlsDir, row.id);
       try {
         await fs.rm(dir, { recursive: true, force: true });
+      } catch { /* dir may not exist */ }
+      // تنظيف مجلد slug القديم إن وُجد
+      const legacyDir = path.join(config.streaming.hlsDir, row.slug);
+      try {
+        await fs.rm(legacyDir, { recursive: true, force: true });
       } catch { /* dir may not exist */ }
     }
   });
