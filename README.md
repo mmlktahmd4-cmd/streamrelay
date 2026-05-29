@@ -74,6 +74,8 @@ sudo bash scripts/update-from-github.sh
 | `scripts/launch-production.sh` | إطلاق إنتاج (IP + بناء + Docker) |
 | `scripts/fix-server-ip.sh` | تصحيح IP الشبكة وروابط القنوات |
 | `scripts/check-ports.sh` | فحص المنافذ |
+| `scripts/diagnose-provision-master.sh` | تشخيص جاهزية الربط التلقائي/اليدوي |
+| `scripts/provision-stream-worker.sh` | سكربت ربط worker بعيد (SSH أو يدوي) |
 | `scripts/install-preflight.sh` | فحص قبل التثبيت |
 
 ---
@@ -95,6 +97,7 @@ sudo systemctl status streamrelay
 
 - إدارة قنوات IPTV مع FFmpeg relay
 - HLS داخلي مع روابط موقّعة
+- **سيرفرات بث متعددة** — توزيع حمل + ربط يدوي/تلقائي
 - بوابة مشاهدة منفصلة (`/watch/login`)
 - ربط MikroTik
 - **عدادات استهلاك:** سحب (داخل) + بث خارج (للمشاهدين) — تحديث كل ثانية
@@ -116,6 +119,7 @@ sudo systemctl status streamrelay
 
 | الملف | المحتوى |
 |-------|---------|
+| [docs/MANUAL-SERVER-LINKING.md](docs/MANUAL-SERVER-LINKING.md) | **ربط سيرفر بث يدوياً** — أوامر كاملة |
 | [docs/INSTALL-TROUBLESHOOTING.md](docs/INSTALL-TROUBLESHOOTING.md) | **حل مشاكل التثبيت** |
 | [docs/INSTALL-UBUNTU-22.md](docs/INSTALL-UBUNTU-22.md) | دليل Ubuntu 22/24 الكامل |
 | [INSTALL-UBUNTU.md](INSTALL-UBUNTU.md) | ملخص التثبيت |
