@@ -6,7 +6,7 @@ import { getPublicUrls } from './public-url.service.js';
 
 const log = createChildLogger('servers');
 
-export const HEARTBEAT_ONLINE_MS = 90_000;
+export const HEARTBEAT_ONLINE_MS = 180_000;
 
 export function canRunStreams(role) {
   return role === 'full' || role === 'stream-only';
@@ -142,7 +142,7 @@ export async function ensureLocalServerRecord() {
 
     await query(
       `UPDATE servers
-       SET role = $2, max_streams = $3, is_active = true
+       SET role = $2, max_streams = $3, is_active = true, last_heartbeat = NOW()
        WHERE id = $1`,
       [existing.id, roleToSet, maxStreams]
     );
@@ -536,9 +536,9 @@ export function startLocalServerHeartbeat() {
     });
   };
   tick();
-  const interval = setInterval(tick, 30_000);
+  const interval = setInterval(tick, 15_000);
   interval.unref();
-  log.info('Server stats heartbeat started (every 30s)');
+  log.info('Server stats heartbeat started (every 15s)');
 }
 
 export function getHlsBaseForServer(server) {
@@ -596,26 +596,34 @@ export async function assignServerForChannel(channelId) {
   );
 
   const streamServers = candidates.rows.map(decorateServer);
-  const onlineServers = streamServers.filter((s) => s.online && !s.is_suspended);
+  const eligible = streamServers.filter((s) => s.is_active && !s.is_suspended);
+  const onlineServers = eligible.filter((s) => s.online);
 
   if (channel.server_id) {
-    const pinned = streamServers.find((s) => s.id === channel.server_id);
+    const pinned = eligible.find((s) => s.id === channel.server_id)
+      || streamServers.find((s) => s.id === channel.server_id);
     if (!pinned || !pinned.is_active) {
       throw new Error('السيرفر المحدد للقناة غير موجود أو معطّل');
     }
     if (pinned.is_suspended) {
       throw new Error(`السيرفر «${pinned.name}» معلّق — أزل التعليق أو غيّر سيرفر القناة`);
     }
-    if (!pinned.online) {
-      throw new Error(`السيرفر «${pinned.name}» غير متصل — شغّله أو غيّر اختيار القناة`);
-    }
     if (pinned.current_streams >= pinned.max_streams) {
       throw new Error(`السيرفر «${pinned.name}» ممتلئ (${pinned.current_streams}/${pinned.max_streams})`);
+    }
+    if (!pinned.online) {
+      log.warn(
+        { hostname: pinned.hostname, channelId },
+        'Pinned server has stale heartbeat — queueing anyway'
+      );
     }
     return pinned;
   }
 
-  const pool = onlineServers.filter((s) => s.current_streams < s.max_streams);
+  let pool = onlineServers.filter((s) => s.current_streams < s.max_streams);
+  if (pool.length === 0) {
+    pool = eligible.filter((s) => s.current_streams < s.max_streams);
+  }
   if (pool.length === 0) {
     const local = await getLocalServer();
     if (local && canRunStreams(local.role) && !local.is_suspended && local.current_streams < local.max_streams) {
@@ -680,9 +688,12 @@ export async function assertChannelAssignedToLocal(channel) {
     if (assigned?.is_suspended) {
       throw new Error(`السيرفر «${assigned.name}» معلّق — أزل التعليق أو غيّر سيرفر القناة`);
     }
-    if (assigned?.online) {
-      throw new Error(`Channel assigned to another server (${assigned.hostname})`);
-    }
+    const hint = assigned?.online
+      ? 'القناة تعمل على السيرفر البعيد'
+      : `شغّل worker على ${assigned?.hostname || 'السيرفر المحدد'} (docker compose -f docker-compose.worker-remote.yml up -d)`;
+    throw new Error(
+      `القناة مربوطة بـ «${assigned?.name || 'سيرفر آخر'}» (${assigned?.hostname}) — ${hint}`
+    );
   }
 
   return local;

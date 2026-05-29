@@ -489,9 +489,15 @@ export default function ServersPage() {
       )}
 
       {cluster && cluster.online_servers === 0 && cluster.stream_servers > 0 && (
-        <div className="card mb-6 bg-amber-50 border border-amber-200 text-sm text-amber-900">
-          يوجد {cluster.stream_servers} سيرفر مسجّل لكن لا أحد يرسل heartbeat — على البعيد:
-          <code className="block mt-1 font-mono text-xs">docker compose -f docker-compose.worker-remote.yml ps && logs worker --tail 20</code>
+        <div className="card mb-6 bg-amber-50 border border-amber-200 text-sm text-amber-900 space-y-2">
+          <p>
+            يوجد <strong>{cluster.stream_servers}</strong> سيرفر مسجّل لكن لا heartbeat حديث — القنوات على سيرفر بعيد لن تعمل حتى يشتغل worker هناك.
+          </p>
+          <p className="font-semibold">على السيرفر الرئيسي:</p>
+          <code className="block font-mono text-xs bg-white/80 p-2 rounded">docker compose ps worker && docker compose logs worker --tail 25</code>
+          <p className="font-semibold">على السيرفر البعيد (SSH):</p>
+          <code className="block font-mono text-xs bg-white/80 p-2 rounded">cd /opt/streamrelay && docker compose -f docker-compose.worker-remote.yml ps && docker compose -f docker-compose.worker-remote.yml logs worker --tail 25</code>
+          <p className="text-xs">تأكد: POSTGRES_HOST و REDIS_HOST = IP الرئيسي في .env على البعيد</p>
         </div>
       )}
 
