@@ -88,7 +88,7 @@ services:
     environment:
       POSTGRES_HOST: postgres
       REDIS_HOST: redis
-      SERVER_ROLE: full
+      SERVER_ROLE: stream-only
       SERVER_ID: ${SERVER_ID:-node-1}
       SERVER_IP: ${SERVER_IP:-192.168.5.102}
       SERVER_LAN_SUBNET: ${SERVER_LAN_SUBNET:-192.168.5.0/24}

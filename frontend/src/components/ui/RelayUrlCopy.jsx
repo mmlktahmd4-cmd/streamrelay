@@ -17,7 +17,7 @@ export default function RelayUrlCopy({ channelId, status, autoLoad = true, compa
     try {
       const { data } = await getPlaybackUrl(channelId);
       if (data?.url) {
-        setUrl(data.direct_url || data.url);
+        setUrl(data.url);
         setStreamServer(data?.stream_server_hostname || data?.stream_server || '');
       } else setError('لم يُرجَع رابط');
     } catch (err) {
@@ -48,7 +48,7 @@ export default function RelayUrlCopy({ channelId, status, autoLoad = true, compa
         const { data } = await getPlaybackUrl(channelId);
         target = data?.url;
         if (target) {
-          setUrl(data.direct_url || target);
+          setUrl(target);
           setStreamServer(data?.stream_server_hostname || data?.stream_server || '');
         } else {
           setError('لم يُرجَع رابط');

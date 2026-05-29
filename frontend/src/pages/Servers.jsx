@@ -251,9 +251,7 @@ export default function ServersPage() {
       const { data } = await getServers(showInactive);
       setServers(data.servers || []);
       setCluster(data.cluster || null);
-    } catch (err) {
-      setMessage(err.response?.data?.error || 'تعذّر تحميل قائمة السيرفرات — أعد تحميل الصفحة');
-    }
+    } catch { /* ignore */ }
     setLoading(false);
   };
 
@@ -480,27 +478,6 @@ export default function ServersPage() {
         </p>
       )}
 
-      {cluster && cluster.stream_servers === 0 && (
-        <div className="card mb-6 bg-amber-50 border border-amber-200 text-sm text-amber-900">
-          لا يوجد سيرفر بث مسجّل — تأكد أن <strong>worker</strong> يعمل على الرئيسي:
-          <code className="mx-1 font-mono text-xs">docker compose ps worker</code>
-          وأن السيرفر المحلي ليس بدور api-only فقط.
-        </div>
-      )}
-
-      {cluster && cluster.online_servers === 0 && cluster.stream_servers > 0 && (
-        <div className="card mb-6 bg-amber-50 border border-amber-200 text-sm text-amber-900 space-y-2">
-          <p>
-            يوجد <strong>{cluster.stream_servers}</strong> سيرفر مسجّل لكن لا heartbeat حديث — القنوات على سيرفر بعيد لن تعمل حتى يشتغل worker هناك.
-          </p>
-          <p className="font-semibold">على السيرفر الرئيسي:</p>
-          <code className="block font-mono text-xs bg-white/80 p-2 rounded">docker compose ps worker && docker compose logs worker --tail 25</code>
-          <p className="font-semibold">على السيرفر البعيد (SSH):</p>
-          <code className="block font-mono text-xs bg-white/80 p-2 rounded">cd /opt/streamrelay && docker compose -f docker-compose.worker-remote.yml ps && docker compose -f docker-compose.worker-remote.yml logs worker --tail 25</code>
-          <p className="text-xs">تأكد: POSTGRES_HOST و REDIS_HOST = IP الرئيسي في .env على البعيد</p>
-        </div>
-      )}
-
       {cluster && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <div className="admin-stat-card">
@@ -516,11 +493,7 @@ export default function ServersPage() {
           <div className="admin-stat-card">
             <p className="text-sm text-slate-500">السعة الكلية</p>
             <p className="text-3xl font-bold text-slate-800">{cluster.total_max_streams}</p>
-            <p className="text-xs text-slate-400">
-              {cluster.total_max_streams_online != null && cluster.total_max_streams_online !== cluster.total_max_streams
-                ? `${cluster.total_max_streams_online} متاحة الآن (متصل)`
-                : 'حد أقصى للبثوث — مسجّلة'}
-            </p>
+            <p className="text-xs text-slate-400">حد أقصى للبثوث</p>
           </div>
           <div className="admin-stat-card">
             <p className="text-sm text-slate-500 flex items-center gap-1"><Activity className="w-4 h-4" /> حمل الكلاستر</p>

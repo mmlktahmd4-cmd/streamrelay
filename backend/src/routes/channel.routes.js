@@ -1,24 +1,10 @@
 import * as channelService from '../services/channel.service.js';
 import { runStreamJob } from '../services/queue.service.js';
 import * as categoryService from '../services/category.service.js';
-import { resolveHlsBaseForChannel, getServerById, getLocalServer } from '../services/server.service.js';
-import { getPublicUrls } from '../services/public-url.service.js';
+import { resolveHlsBaseForChannel, getServerById } from '../services/server.service.js';
 import { generateSignedUrl } from '../utils/crypto.js';
 import { validate, createChannelSchema, updateChannelSchema, importM3USchema, paginationSchema, bulkUpdateChannelsSchema, bulkStreamActionSchema } from '../middleware/validate.js';
 import { requireMinRole } from '../middleware/auth.js';
-
-async function resolvePlaybackBases(channel) {
-  const directBase = await resolveHlsBaseForChannel(channel);
-  const { hlsBase: panelBase } = getPublicUrls();
-  const local = await getLocalServer();
-  const isRemoteStream = !!(local && channel?.server_id && channel.server_id !== local.id);
-  return {
-    directBase,
-    panelBase,
-    playBase: isRemoteStream ? panelBase : directBase,
-    isRemoteStream,
-  };
-}
 
 export default async function channelRoutes(fastify) {
   fastify.addHook('preHandler', fastify.authenticate);
@@ -78,8 +64,8 @@ export default async function channelRoutes(fastify) {
 
     const lines = ['#EXTM3U', '#EXTINF:-1,StreamRelay — Local Relay'];
     for (const ch of channels) {
-      const { playBase } = await resolvePlaybackBases(ch);
-      const signed = generateSignedUrl(ch.slug, ttl, playBase);
+      const hlsBase = await resolveHlsBaseForChannel(ch);
+      const signed = generateSignedUrl(ch.slug, ttl, hlsBase);
       lines.push(`#EXTINF:-1,${ch.name}`);
       lines.push(signed.url);
     }
@@ -140,25 +126,20 @@ export default async function channelRoutes(fastify) {
     }
 
     const ttl = parseInt(request.query.ttl, 10) || undefined;
-    const { playBase, directBase, isRemoteStream } = await resolvePlaybackBases(channel);
-    const signed = generateSignedUrl(channel.slug, ttl, playBase);
-    const directSigned = isRemoteStream
-      ? generateSignedUrl(channel.slug, ttl, directBase)
-      : signed;
+    const hlsBase = await resolveHlsBaseForChannel(channel);
+    const signed = generateSignedUrl(channel.slug, ttl, hlsBase);
     const assignedServer = channel.server_id ? await getServerById(channel.server_id) : null;
 
     return {
       ...signed,
-      direct_url: directSigned.url,
       type: 'live',
-      relay: isRemoteStream,
+      relay: true,
       stream_server: assignedServer?.name || null,
       stream_server_hostname: assignedServer?.hostname || null,
-      note: isRemoteStream
-        ? `المعاينة عبر الرئيسي — الرابط الخارجي: ${assignedServer?.ip_address || directBase}`
+      note: assignedServer
+        ? `البث من ${assignedServer.name} (${assignedServer.hostname}) — الرابط يجب أن يطابق IP السيرفر: ${assignedServer.ip_address || 'راجع إعدادات السيرفر'}`
         : 'Local relay URL — viewers watch from your server, not the external source',
-      hls_base: playBase,
-      direct_hls_base: directBase,
+      hls_base: hlsBase,
     };
   });
 
