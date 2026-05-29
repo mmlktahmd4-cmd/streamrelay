@@ -131,11 +131,20 @@ export async function ensureLocalServerRecord() {
   const metadata = normalizeMetadata(existing?.metadata);
 
   if (existing) {
+    // لا تخفّض دور سيرفر بث إلى api-only عند إعادة تشغيل حاوية API وحدها
+    const roleToSet = (config.serverRole === 'api-only' && canRunStreams(existing.role))
+      ? existing.role
+      : config.serverRole;
+    const maxStreams = Math.max(
+      Number(existing.max_streams) || 0,
+      Number(config.streaming.maxConcurrent) || 0
+    ) || config.streaming.maxConcurrent;
+
     await query(
       `UPDATE servers
        SET role = $2, max_streams = $3, is_active = true
        WHERE id = $1`,
-      [existing.id, config.serverRole, config.streaming.maxConcurrent]
+      [existing.id, roleToSet, maxStreams]
     );
     return getServerById(existing.id);
   }
@@ -162,8 +171,22 @@ export async function listServers({ includeInactive = false } = {}) {
     ? 'SELECT * FROM servers ORDER BY name ASC, created_at ASC'
     : 'SELECT * FROM servers WHERE is_active = true ORDER BY name ASC, created_at ASC';
   const result = await query(sql);
+
+  const countResult = await query(
+    `SELECT server_id, COUNT(*) AS count FROM channels
+     WHERE status IN ('running', 'starting', 'restarting') AND is_active = true
+     GROUP BY server_id`
+  );
+  const countByServer = new Map(
+    countResult.rows.map((r) => [r.server_id, parseInt(r.count, 10)])
+  );
+
   return result.rows.map((row) => {
-    const server = decorateServer(row);
+    const liveCount = countByServer.get(row.id);
+    const enriched = liveCount != null
+      ? { ...row, current_streams: liveCount }
+      : row;
+    const server = decorateServer(enriched);
     if (server.is_local && !server.host_stats) {
       return attachLiveStats(server);
     }
@@ -175,9 +198,29 @@ export async function getClusterSummary() {
   const servers = await listServers();
   const streamServers = servers.filter((s) => s.is_active && canRunStreams(s.role));
   const online = streamServers.filter((s) => s.online && !s.is_suspended);
-  const totalMax = online.reduce((sum, s) => sum + (Number(s.max_streams) || 0), 0);
-  const totalCurrent = online.reduce((sum, s) => sum + (Number(s.current_streams) || 0), 0);
-  const withStats = online.filter((s) => s.host_stats?.cpu);
+
+  const totalMaxRegistered = streamServers.reduce(
+    (sum, s) => sum + (Number(s.max_streams) || 0),
+    0
+  );
+  const totalMaxOnline = online.reduce(
+    (sum, s) => sum + (Number(s.max_streams) || 0),
+    0
+  );
+  const totalCurrentFromServers = streamServers.reduce(
+    (sum, s) => sum + (Number(s.current_streams) || 0),
+    0
+  );
+
+  const channelResult = await query(
+    `SELECT COUNT(*) AS count FROM channels
+     WHERE is_active = true AND status IN ('running', 'starting', 'restarting')`
+  );
+  const totalCurrentDb = parseInt(channelResult.rows[0]?.count || '0', 10);
+
+  const withStats = [...online, ...streamServers.filter((s) => s.is_local && s.host_stats?.cpu)]
+    .filter((s, i, arr) => arr.findIndex((x) => x.id === s.id) === i)
+    .filter((s) => s.host_stats?.cpu);
   const avgCpu = withStats.length > 0
     ? Math.round(withStats.reduce((sum, s) => sum + (s.cpu_percent || 0), 0) / withStats.length)
     : null;
@@ -185,13 +228,19 @@ export async function getClusterSummary() {
     ? Math.max(...withStats.map((s) => s.cpu_percent || 0))
     : null;
 
+  const totalCurrent = Math.max(totalCurrentDb, totalCurrentFromServers);
+  const loadDenominator = totalMaxOnline > 0 ? totalMaxOnline : totalMaxRegistered;
+
   return {
     total_servers: servers.length,
     stream_servers: streamServers.length,
     online_servers: online.length,
-    total_max_streams: totalMax,
+    total_max_streams: totalMaxRegistered,
+    total_max_streams_online: totalMaxOnline,
     total_current_streams: totalCurrent,
-    cluster_load_percent: totalMax > 0 ? Math.round((totalCurrent / totalMax) * 100) : 0,
+    cluster_load_percent: loadDenominator > 0
+      ? Math.round((totalCurrent / loadDenominator) * 100)
+      : 0,
     avg_cpu_percent: avgCpu,
     max_cpu_percent: maxCpu,
     local_server_id: (await getLocalServer())?.id || null,
