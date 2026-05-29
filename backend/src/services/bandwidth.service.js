@@ -10,9 +10,11 @@ import * as channelService from './channel.service.js';
 const log = createChildLogger('bandwidth');
 
 const PREFIX = 'sr:bandwidth:';
+const SERVER_PREFIX = `${PREFIX}server:`;
 const POLL_MS = 1000;
 const BPS_WINDOW_SEC = 3;
-const TTL_SEC = 10;
+const CHANNEL_TTL_SEC = 30;
+const SERVER_TTL_SEC = 20;
 
 let redis = null;
 const trackers = new Map();
@@ -82,8 +84,11 @@ async function samplePullBandwidth(channelId, slug) {
       const stat = await fs.stat(fp);
       const old = fileStates[file];
       if (!old) {
-        // أول ظهور للقطعة — غالباً مكتملة؛ نحسب النمو من الاستطلاع التالي فقط
         fileStates[file] = { size: stat.size, mtimeMs: stat.mtimeMs };
+        // HLS يحذف القطع بسرعة — نحسب الحجم مرة عند اكتمال القطعة (~250ms+)
+        if (stat.size > 0 && now - stat.mtimeMs >= 250) {
+          deltaBytes += stat.size;
+        }
         continue;
       }
       const grown = stat.size - (old.size || 0);
@@ -267,15 +272,153 @@ function emptyBandwidthStats() {
   };
 }
 
+async function publishServerSnapshot(snapshot) {
+  if (!snapshot) return;
+  try {
+    const r = getRedis();
+    const key = `${SERVER_PREFIX}${config.serverId}`;
+    await r.set(
+      key,
+      JSON.stringify({
+        ...snapshot,
+        server_id: config.serverId,
+        published_at: new Date().toISOString(),
+      }),
+      'EX',
+      SERVER_TTL_SEC
+    );
+  } catch (err) {
+    log.debug({ err: err.message }, 'Publish server bandwidth snapshot failed');
+  }
+}
+
+async function scanRedisKeys(pattern) {
+  const r = getRedis();
+  const keys = [];
+  let cursor = '0';
+  do {
+    const [next, found] = await r.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+    cursor = next;
+    keys.push(...found);
+  } while (cursor !== '0');
+  return keys;
+}
+
+async function aggregateStatsFromRedis() {
+  try {
+    const serverKeys = await scanRedisKeys(`${SERVER_PREFIX}*`);
+    const snapshots = [];
+
+    for (const key of serverKeys) {
+      const raw = await getRedis().get(key);
+      if (!raw) continue;
+      try {
+        snapshots.push(JSON.parse(raw));
+      } catch { /* ignore */ }
+    }
+
+    if (snapshots.length > 0) {
+      const channels = [];
+      let totalPullBps = 0;
+      let totalPullSession = 0;
+      let totalEgressBps = 0;
+      let totalEgressSession = 0;
+      let hostRxBps = 0;
+      let hostTxBps = 0;
+
+      for (const snap of snapshots) {
+        totalPullBps += snap.total_pull_bps || 0;
+        totalPullSession += snap.total_pull_session_bytes || 0;
+        totalEgressBps += snap.total_egress_bps || 0;
+        totalEgressSession += snap.total_egress_session_bytes || 0;
+        hostRxBps += snap.host_rx_bps || 0;
+        hostTxBps += snap.host_tx_bps || 0;
+        if (Array.isArray(snap.channels)) channels.push(...snap.channels);
+      }
+
+      return {
+        total_pull_bps: totalPullBps,
+        total_pull_mbps: Math.round((totalPullBps / 1_000_000) * 100) / 100,
+        total_pull_session_bytes: totalPullSession,
+        total_egress_bps: totalEgressBps,
+        total_egress_mbps: Math.round((totalEgressBps / 1_000_000) * 100) / 100,
+        total_egress_session_bytes: totalEgressSession,
+        host_rx_bps: hostRxBps,
+        host_rx_mbps: Math.round((hostRxBps / 1_000_000) * 100) / 100,
+        host_tx_bps: hostTxBps,
+        host_tx_mbps: Math.round((hostTxBps / 1_000_000) * 100) / 100,
+        channel_count: channels.length,
+        channels,
+        servers: snapshots.map((s) => ({
+          server_id: s.server_id,
+          total_pull_bps: s.total_pull_bps,
+          total_egress_bps: s.total_egress_bps,
+          channel_count: s.channel_count,
+          updated_at: s.updated_at,
+        })),
+        updated_at: new Date().toISOString(),
+        poll_interval_ms: POLL_MS,
+        _cachedAt: Date.now(),
+        _source: 'redis-cluster',
+      };
+    }
+
+    const channelKeys = await scanRedisKeys(`${PREFIX}channel:*`);
+    if (channelKeys.length === 0) return null;
+
+    const channels = [];
+    let totalPullBps = 0;
+    let totalEgressBps = 0;
+    let totalPullSession = 0;
+
+    for (const key of channelKeys) {
+      const raw = await getRedis().get(key);
+      if (!raw) continue;
+      try {
+        const ch = JSON.parse(raw);
+        channels.push(ch);
+        totalPullBps += ch.pull_bps || ch.bps || 0;
+        totalEgressBps += ch.egress_bps || 0;
+        totalPullSession += ch.session_bytes || 0;
+      } catch { /* ignore */ }
+    }
+
+    return {
+      total_pull_bps: totalPullBps,
+      total_pull_mbps: Math.round((totalPullBps / 1_000_000) * 100) / 100,
+      total_pull_session_bytes: totalPullSession,
+      total_egress_bps: totalEgressBps,
+      total_egress_mbps: Math.round((totalEgressBps / 1_000_000) * 100) / 100,
+      total_egress_session_bytes: 0,
+      host_rx_bps: 0,
+      host_rx_mbps: 0,
+      host_tx_bps: 0,
+      host_tx_mbps: 0,
+      channel_count: channels.length,
+      channels,
+      updated_at: new Date().toISOString(),
+      poll_interval_ms: POLL_MS,
+      _cachedAt: Date.now(),
+      _source: 'redis-channels',
+    };
+  } catch (err) {
+    log.debug({ err: err.message }, 'Aggregate Redis bandwidth failed');
+    return null;
+  }
+}
+
 async function tickMonitor() {
   try {
-    const { isChannelAssignedToLocalWorker } = await import('./server.service.js');
+    const { isChannelAssignedToLocalWorker, canRunStreams } = await import('./server.service.js');
     const running = await channelService.getRunningChannels();
     const localChannels = [];
     for (const ch of running) {
       if (await isChannelAssignedToLocalWorker(ch)) localChannels.push(ch);
     }
-    await buildSnapshot(localChannels);
+    const snap = await buildSnapshot(localChannels);
+    if (canRunStreams(config.serverRole)) {
+      await publishServerSnapshot(snap);
+    }
   } catch (err) {
     log.debug({ err: err.message }, 'Bandwidth monitor tick failed');
   }
@@ -298,7 +441,7 @@ export function stopBandwidthMonitor() {
 async function publishChannelStats(channelId, stats) {
   try {
     const r = getRedis();
-    await r.set(`${PREFIX}channel:${channelId}`, JSON.stringify(stats), 'EX', TTL_SEC);
+    await r.set(`${PREFIX}channel:${channelId}`, JSON.stringify(stats), 'EX', CHANNEL_TTL_SEC);
   } catch { /* ignore */ }
 }
 
@@ -378,23 +521,37 @@ export function handleFfmpegStderr() {
   /* HLS dir sampling is the source of truth for pull rate */
 }
 
+function enrichChannelsWithNames(clusterSnap, runningChannels) {
+  if (!clusterSnap?.channels?.length || !runningChannels?.length) return clusterSnap;
+  const byId = new Map(runningChannels.map((c) => [c.id, c]));
+  clusterSnap.channels = clusterSnap.channels.map((ch) => {
+    const db = byId.get(ch.channel_id);
+    return db ? { ...ch, name: db.name, slug: db.slug || ch.slug } : ch;
+  });
+  return clusterSnap;
+}
+
 export async function getBandwidthStats(runningChannels = []) {
+  const cluster = await aggregateStatsFromRedis();
+  if (cluster) {
+    return enrichChannelsWithNames(cluster, runningChannels);
+  }
+
   const { isChannelAssignedToLocalWorker } = await import('./server.service.js');
   const filtered = [];
   for (const ch of runningChannels) {
     if (await isChannelAssignedToLocalWorker(ch)) filtered.push(ch);
   }
-  runningChannels = filtered;
 
   if (latestSnapshot && latestSnapshot._cachedAt && Date.now() - latestSnapshot._cachedAt < 1500) {
-    if (runningChannels.length === 0) {
+    if (filtered.length === 0) {
       return { ...emptyBandwidthStats(), host_rx_bps: latestSnapshot.host_rx_bps, host_tx_bps: latestSnapshot.host_tx_bps };
     }
     return latestSnapshot;
   }
 
-  if (runningChannels.length > 0) {
-    return buildSnapshot(runningChannels);
+  if (filtered.length > 0) {
+    return buildSnapshot(filtered);
   }
 
   if (latestSnapshot) return latestSnapshot;

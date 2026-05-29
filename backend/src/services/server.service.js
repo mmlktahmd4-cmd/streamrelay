@@ -218,9 +218,9 @@ export async function getClusterSummary() {
   );
   const totalCurrentDb = parseInt(channelResult.rows[0]?.count || '0', 10);
 
-  const withStats = [...online, ...streamServers.filter((s) => s.is_local && s.host_stats?.cpu)]
-    .filter((s, i, arr) => arr.findIndex((x) => x.id === s.id) === i)
-    .filter((s) => s.host_stats?.cpu);
+  const withStats = streamServers
+    .filter((s) => s.host_stats?.cpu != null)
+    .filter((s, i, arr) => arr.findIndex((x) => x.id === s.id) === i);
   const avgCpu = withStats.length > 0
     ? Math.round(withStats.reduce((sum, s) => sum + (s.cpu_percent || 0), 0) / withStats.length)
     : null;
@@ -488,6 +488,15 @@ export async function heartbeatLocalServer(activeCount = null) {
       [local.id]
     );
     count = parseInt(result.rows[0].count, 10);
+  }
+
+  // API-only: لا تستبدل host_stats — يحدّثها worker البث فقط
+  if (config.serverRole === 'api-only') {
+    await query(
+      `UPDATE servers SET current_streams = $2, last_heartbeat = NOW() WHERE id = $1`,
+      [local.id, count]
+    );
+    return getServerById(local.id);
   }
 
   const rawMeta = await getServerMetadataRaw(local.id);
