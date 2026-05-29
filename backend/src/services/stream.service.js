@@ -171,6 +171,10 @@ function buildFFmpegArgs(channel) {
 
   ];
 
+  if (channel.source_type !== 'udp') {
+    args.push('-fflags', '+genpts+discardcorrupt');
+  }
+
 
 
   if (channel.source_type === 'udp') {
@@ -231,9 +235,9 @@ function buildFFmpegArgs(channel) {
 
         '-hls_time', '4',
 
-        '-hls_list_size', '6',
+        '-hls_list_size', '10',
 
-        '-hls_flags', 'delete_segments+append_list+omit_endlist',
+        '-hls_flags', 'append_list+delete_segments+program_date_time',
 
         '-hls_segment_filename', path.join(hlsDir, 'seg_%03d.ts'),
 

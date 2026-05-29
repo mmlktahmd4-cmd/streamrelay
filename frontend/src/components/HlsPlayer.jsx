@@ -13,8 +13,10 @@ export default function HlsPlayer({ src, autoPlay = true }) {
     if (Hls.isSupported()) {
       hls = new Hls({
         enableWorker: true,
-        lowLatencyMode: true,
-        backBufferLength: 30,
+        lowLatencyMode: false,
+        backBufferLength: 60,
+        liveSyncDurationCount: 3,
+        maxLiveSyncPlaybackRate: 1.1,
       });
       hls.loadSource(src);
       hls.attachMedia(video);

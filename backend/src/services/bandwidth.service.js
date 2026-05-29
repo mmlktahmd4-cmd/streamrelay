@@ -82,11 +82,12 @@ async function samplePullBandwidth(channelId, slug) {
       const stat = await fs.stat(fp);
       const old = fileStates[file];
       if (!old) {
-        deltaBytes += stat.size;
-      } else {
-        const grown = stat.size - (old.size || 0);
-        if (grown > 0) deltaBytes += grown;
+        // أول ظهور للقطعة — غالباً مكتملة؛ نحسب النمو من الاستطلاع التالي فقط
+        fileStates[file] = { size: stat.size, mtimeMs: stat.mtimeMs };
+        continue;
       }
+      const grown = stat.size - (old.size || 0);
+      if (grown > 0) deltaBytes += grown;
       fileStates[file] = { size: stat.size, mtimeMs: stat.mtimeMs };
     }
 

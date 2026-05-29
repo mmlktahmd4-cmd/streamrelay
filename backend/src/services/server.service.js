@@ -570,15 +570,27 @@ export function getHlsBaseForServer(server) {
 export async function resolveHlsBaseForChannel(channel) {
   if (!channel) return getPublicUrls().hlsBase;
 
-  // output_url يُحدَّث عند التشغيل من السيرفر الفعلي — الأدق
+  // server_id أولاً — output_url قد يبقى قديماً بعد sync على الرئيسي
+  if (channel.server_id) {
+    const server = await getServerById(channel.server_id);
+    if (server) {
+      const base = getHlsBaseForServer(server);
+      if (channel.slug) {
+        const expected = `${base}/${channel.slug}/index.m3u8`;
+        if (channel.output_url && channel.output_url !== expected) {
+          await query(
+            'UPDATE channels SET output_url = $1 WHERE id = $2',
+            [expected, channel.id]
+          ).catch(() => {});
+        }
+      }
+      return base;
+    }
+  }
+
   if (channel.output_url) {
     const match = String(channel.output_url).match(/^(.+)\/[^/]+\/index\.m3u8/i);
     if (match) return match[1];
-  }
-
-  if (channel.server_id) {
-    const server = await getServerById(channel.server_id);
-    if (server) return getHlsBaseForServer(server);
   }
 
   return getPublicUrls().hlsBase;
