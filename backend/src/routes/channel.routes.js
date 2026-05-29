@@ -1,7 +1,7 @@
 import * as channelService from '../services/channel.service.js';
 import { runStreamJob } from '../services/queue.service.js';
 import * as categoryService from '../services/category.service.js';
-import { resolveHlsBaseForChannel, getServerById } from '../services/server.service.js';
+import { resolveHlsBaseForChannel, resolvePanelPlaybackBase, getServerById } from '../services/server.service.js';
 import { generateSignedUrl } from '../utils/crypto.js';
 import { validate, createChannelSchema, updateChannelSchema, importM3USchema, paginationSchema, bulkUpdateChannelsSchema, bulkStreamActionSchema } from '../middleware/validate.js';
 import { requireMinRole } from '../middleware/auth.js';
@@ -64,7 +64,7 @@ export default async function channelRoutes(fastify) {
 
     const lines = ['#EXTM3U', '#EXTINF:-1,StreamRelay — Local Relay'];
     for (const ch of channels) {
-      const hlsBase = await resolveHlsBaseForChannel(ch);
+      const hlsBase = await resolvePanelPlaybackBase(ch);
       const signed = generateSignedUrl(ch.slug, ttl, hlsBase);
       lines.push(`#EXTINF:-1,${ch.name}`);
       lines.push(signed.url);
@@ -126,20 +126,26 @@ export default async function channelRoutes(fastify) {
     }
 
     const ttl = parseInt(request.query.ttl, 10) || undefined;
-    const hlsBase = await resolveHlsBaseForChannel(channel);
-    const signed = generateSignedUrl(channel.slug, ttl, hlsBase);
+    const directBase = await resolveHlsBaseForChannel(channel);
+    const playBase = await resolvePanelPlaybackBase(channel);
+    const signed = generateSignedUrl(channel.slug, ttl, playBase);
+    const directSigned = playBase !== directBase
+      ? generateSignedUrl(channel.slug, ttl, directBase)
+      : signed;
     const assignedServer = channel.server_id ? await getServerById(channel.server_id) : null;
 
     return {
       ...signed,
+      direct_url: directSigned.url,
       type: 'live',
-      relay: true,
+      relay: playBase !== directBase,
       stream_server: assignedServer?.name || null,
       stream_server_hostname: assignedServer?.hostname || null,
       note: assignedServer
-        ? `البث من ${assignedServer.name} (${assignedServer.hostname}) — الرابط يجب أن يطابق IP السيرفر: ${assignedServer.ip_address || 'راجع إعدادات السيرفر'}`
-        : 'Local relay URL — viewers watch from your server, not the external source',
-      hls_base: hlsBase,
+        ? `المعاينة عبر الرئيسي — الرابط الخارجي على ${assignedServer.ip_address || directBase}`
+        : 'Local relay URL',
+      hls_base: playBase,
+      direct_hls_base: directBase,
     };
   });
 

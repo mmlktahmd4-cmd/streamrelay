@@ -15,6 +15,7 @@ import { setupQueueProcessors } from './services/queue.service.js';
 import { stopAllStreams } from './services/stream.service.js';
 import { refreshPublicUrlCache, isOriginAllowed, startNetworkWatcher } from './services/public-url.service.js';
 import { startBandwidthMonitor, recordEgressBytes } from './services/bandwidth.service.js';
+import { registerHlsRelayRoutes } from './services/hls-relay.service.js';
 
 import authRoutes from './routes/auth.routes.js';
 import channelRoutes from './routes/channel.routes.js';
@@ -92,18 +93,11 @@ async function buildApp() {
 
   const hlsRoot = path.resolve(config.streaming.hlsDir);
 
-  // Serve HLS via Nginx (/hls/) or directly
+  registerHlsRelayRoutes(app);
+
   await app.register(fastifyStatic, {
     root: hlsRoot,
     prefix: '/hls/',
-    decorateReply: false,
-    setHeaders: hlsHeaders,
-  });
-
-  // نفس البث عبر /api/hls/ — يتجاوز حجب Nginx referer ويعمل من لوحة المشاهدة
-  await app.register(fastifyStatic, {
-    root: hlsRoot,
-    prefix: '/api/hls/',
     decorateReply: false,
     setHeaders: hlsHeaders,
   });

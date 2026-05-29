@@ -211,6 +211,9 @@ function buildFFmpegArgs(channel) {
 
     }
 
+  } else if (channel.output_format === 'hls') {
+    args.push('-map', '0:v:0?', '-map', '0:a:0?');
+    args.push('-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k', '-ac', '2');
   } else {
 
     args.push('-c', 'copy');

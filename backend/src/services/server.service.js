@@ -521,18 +521,25 @@ export function getHlsBaseForServer(server) {
 export async function resolveHlsBaseForChannel(channel) {
   if (!channel) return getPublicUrls().hlsBase;
 
-  // output_url يُحدَّث عند التشغيل من السيرفر الفعلي — الأدق
-  if (channel.output_url) {
-    const match = String(channel.output_url).match(/^(.+)\/[^/]+\/index\.m3u8/i);
-    if (match) return match[1];
-  }
-
   if (channel.server_id) {
     const server = await getServerById(channel.server_id);
     if (server) return getHlsBaseForServer(server);
   }
 
+  if (channel.output_url) {
+    const match = String(channel.output_url).match(/^(.+)\/[^/]+\/index\.m3u8/i);
+    if (match) return match[1];
+  }
+
   return getPublicUrls().hlsBase;
+}
+
+export async function resolvePanelPlaybackBase(channel) {
+  const directBase = await resolveHlsBaseForChannel(channel);
+  const local = await getLocalServer();
+  const isRemote = !!(local && channel?.server_id && channel.server_id !== local.id);
+  if (isRemote) return getPublicUrls().hlsBase;
+  return directBase;
 }
 
 export async function assignServerForChannel(channelId) {
@@ -628,12 +635,9 @@ export async function assertChannelAssignedToLocal(channel) {
 
   if (channel.server_id && channel.server_id !== local.id) {
     const assigned = await getServerById(channel.server_id);
-    if (assigned?.is_suspended) {
-      throw new Error(`السيرفر «${assigned.name}» معلّق — أزل التعليق أو غيّر سيرفر القناة`);
-    }
-    if (assigned?.online) {
-      throw new Error(`Channel assigned to another server (${assigned.hostname})`);
-    }
+    throw new Error(
+      `القناة مربوطة بـ «${assigned?.name || 'سيرفر آخر'}» (${assigned?.hostname || '—'})`
+    );
   }
 
   return local;
