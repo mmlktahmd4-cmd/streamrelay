@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { getServers, createServer, updateServer, deleteServer } from '../api/client';
+import { getServers, createServer, updateServer, deleteServer, provisionServer } from '../api/client';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
-import { Server, Plus, Pencil, Trash2, RefreshCw, Activity } from 'lucide-react';
+import { Server, Plus, Pencil, Trash2, RefreshCw, Activity, Link2, Settings2 } from 'lucide-react';
 
 const roleLabels = {
   full: 'كامل (API + بث)',
@@ -19,6 +19,16 @@ const emptyForm = {
   public_base_url: '',
 };
 
+const emptyProvision = {
+  name: '',
+  ip_address: '',
+  ssh_username: 'root',
+  ssh_password: '',
+  ssh_port: 22,
+  hostname: '',
+  max_streams: 100,
+};
+
 function LoadBar({ value }) {
   const color = value >= 90 ? 'bg-red-500' : value >= 70 ? 'bg-amber-500' : 'bg-emerald-500';
   return (
@@ -32,11 +42,13 @@ export default function ServersPage() {
   const [loading, setLoading] = useState(true);
   const [servers, setServers] = useState([]);
   const [cluster, setCluster] = useState(null);
-  const [showForm, setShowForm] = useState(false);
+  const [mode, setMode] = useState(null);
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState(emptyForm);
+  const [provision, setProvision] = useState(emptyProvision);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
+  const [provisionLog, setProvisionLog] = useState('');
 
   const loadServers = async () => {
     try {
@@ -54,14 +66,18 @@ export default function ServersPage() {
     return () => clearInterval(interval);
   }, []);
 
-  const resetForm = () => {
+  const resetForms = () => {
     setForm(emptyForm);
+    setProvision(emptyProvision);
     setEditId(null);
-    setShowForm(false);
+    setMode(null);
+    setMessage('');
+    setProvisionLog('');
   };
 
   const handleEdit = (server) => {
     setEditId(server.id);
+    setMode('manual');
     setForm({
       name: server.name || '',
       hostname: server.hostname || '',
@@ -71,10 +87,9 @@ export default function ServersPage() {
       hls_base_url: server.hls_base_url || '',
       public_base_url: server.public_base_url || '',
     });
-    setShowForm(true);
   };
 
-  const handleSave = async (e) => {
+  const handleManualSave = async (e) => {
     e.preventDefault();
     setSaving(true);
     setMessage('');
@@ -86,10 +101,30 @@ export default function ServersPage() {
         await createServer(form);
         setMessage('تم إضافة السيرفر');
       }
-      resetForm();
+      resetForms();
       loadServers();
     } catch (err) {
       setMessage(err.response?.data?.error || 'تعذّر الحفظ');
+    }
+    setSaving(false);
+  };
+
+  const handleProvision = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setMessage('');
+    setProvisionLog('');
+    try {
+      const payload = { ...provision };
+      if (!payload.name?.trim()) delete payload.name;
+      if (!payload.hostname?.trim()) delete payload.hostname;
+      const { data } = await provisionServer(payload);
+      setMessage(`تم ربط السيرفر «${data.server?.name}» بنجاح`);
+      setProvisionLog(data.log || '');
+      resetForms();
+      loadServers();
+    } catch (err) {
+      setMessage(err.response?.data?.error || 'فشل الربط التلقائي');
     }
     setSaving(false);
   };
@@ -115,12 +150,17 @@ export default function ServersPage() {
             سيرفرات البث
           </h1>
           <p className="page-subtitle mt-1">
-            أضف سيرفرات متعددة — النظام يوزّع القنوات تلقائياً على الأقل حملاً
+            اربط سيرفرات جديدة تلقائياً أو اختر سيرفراً لكل قناة من صفحة القنوات
           </p>
         </div>
-        <button type="button" className="btn btn-primary" onClick={() => { resetForm(); setShowForm(true); }}>
-          <Plus className="w-4 h-4" /> إضافة سيرفر
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className="btn btn-primary" onClick={() => { resetForms(); setMode('provision'); }}>
+            <Link2 className="w-4 h-4" /> ربط تلقائي (SSH)
+          </button>
+          <button type="button" className="btn btn-secondary" onClick={() => { resetForms(); setMode('manual'); }}>
+            <Plus className="w-4 h-4" /> إضافة يدوي
+          </button>
+        </div>
       </div>
 
       {cluster && (
@@ -149,18 +189,66 @@ export default function ServersPage() {
       )}
 
       <div className="card mb-6 bg-blue-50 border border-blue-100 text-sm text-slate-700 leading-relaxed">
-        <strong>كيف يعمل توزيع الحمل؟</strong>
+        <strong>كيف يعمل؟</strong>
         <ul className="list-disc list-inside mt-2 space-y-1">
-          <li>عند تشغيل قناة، النظام يختار السيرفر <strong>الأقل حملاً</strong> تلقائياً.</li>
-          <li>ثبّت StreamRelay على كل جهاز بث مع <span className="font-mono">SERVER_ID</span> فريد (مثل node-2).</li>
-          <li>إذا امتلأ سيرفر، أضف سيرفراً جديداً — القنوات الجديدة تذهب له تلقائياً.</li>
-          <li>للسيرفرات على أجهزة مختلفة، املأ <strong>رابط HLS</strong> الخاص بكل سيرفر.</li>
+          <li><strong>ربط تلقائي:</strong> أدخل IP + SSH — النظام ينزّل StreamRelay من GitHub ويشغّل worker على السيرفر البعيد.</li>
+          <li><strong>اختيار القناة:</strong> من «إضافة/تعديل قناة» اختر السيرفر أو اترك «تلقائي».</li>
+          <li>على السيرفر الرئيسي، فعّل <span className="font-mono">POSTGRES_PUBLISH=0.0.0.0:5432</span> و <span className="font-mono">REDIS_PUBLISH=0.0.0.0:6379</span> في <span className="font-mono">.env</span> ثم أعد التشغيل.</li>
         </ul>
       </div>
 
-      {showForm && (
-        <form onSubmit={handleSave} className="card mb-6 space-y-4 max-w-2xl">
-          <h2 className="font-bold text-slate-800">{editId ? 'تعديل سيرفر' : 'سيرفر جديد'}</h2>
+      {mode === 'provision' && (
+        <form onSubmit={handleProvision} className="card mb-6 space-y-4 max-w-2xl border-emerald-100">
+          <h2 className="font-bold text-slate-800 flex items-center gap-2">
+            <Link2 className="w-5 h-5 text-emerald-600" /> ربط سيرفر بث تلقائياً
+          </h2>
+          <p className="text-sm text-slate-600">يتصل عبر SSH، يثبّت Docker، يستنسخ المشروع، ويرفع إعدادات worker تلقائياً.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <label className="block">
+              <span className="label">اسم العرض (اختياري)</span>
+              <input className="input mt-1" value={provision.name} onChange={(e) => setProvision({ ...provision, name: e.target.value })} placeholder="سيرفر 2" />
+            </label>
+            <label className="block">
+              <span className="label">IP السيرفر *</span>
+              <input className="input mt-1 font-mono" dir="ltr" value={provision.ip_address} onChange={(e) => setProvision({ ...provision, ip_address: e.target.value })} required placeholder="192.168.1.10" />
+            </label>
+            <label className="block">
+              <span className="label">اسم مستخدم SSH *</span>
+              <input className="input mt-1 font-mono" dir="ltr" value={provision.ssh_username} onChange={(e) => setProvision({ ...provision, ssh_username: e.target.value })} required />
+            </label>
+            <label className="block">
+              <span className="label">كلمة مرور SSH *</span>
+              <input type="password" className="input mt-1 font-mono" dir="ltr" value={provision.ssh_password} onChange={(e) => setProvision({ ...provision, ssh_password: e.target.value })} required autoComplete="new-password" />
+            </label>
+            <label className="block">
+              <span className="label">منفذ SSH</span>
+              <input type="number" min="1" className="input mt-1" value={provision.ssh_port} onChange={(e) => setProvision({ ...provision, ssh_port: parseInt(e.target.value, 10) || 22 })} />
+            </label>
+            <label className="block">
+              <span className="label">Hostname (SERVER_ID) — اختياري</span>
+              <input className="input mt-1 font-mono" dir="ltr" value={provision.hostname} onChange={(e) => setProvision({ ...provision, hostname: e.target.value })} placeholder="node-2 (تلقائي إن تُرك فارغاً)" />
+            </label>
+            <label className="block">
+              <span className="label">حد القنوات</span>
+              <input type="number" min="1" className="input mt-1" value={provision.max_streams} onChange={(e) => setProvision({ ...provision, max_streams: parseInt(e.target.value, 10) || 100 })} />
+            </label>
+          </div>
+          <div className="flex gap-2">
+            <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'جاري الربط...' : 'ربط وتثبيت'}</button>
+            <button type="button" className="btn btn-secondary" onClick={resetForms}>إلغاء</button>
+          </div>
+          {message && <p className={`text-sm ${message.includes('فشل') || message.includes('تعذّر') ? 'text-red-600' : 'text-emerald-700'}`}>{message}</p>}
+          {provisionLog && (
+            <pre className="text-xs bg-slate-900 text-slate-100 p-3 rounded-lg overflow-x-auto max-h-48">{provisionLog}</pre>
+          )}
+        </form>
+      )}
+
+      {mode === 'manual' && (
+        <form onSubmit={handleManualSave} className="card mb-6 space-y-4 max-w-2xl">
+          <h2 className="font-bold text-slate-800 flex items-center gap-2">
+            <Settings2 className="w-5 h-5" /> {editId ? 'تعديل سيرفر' : 'إضافة يدوي'}
+          </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <label className="block">
               <span className="label">اسم العرض</span>
@@ -193,7 +281,7 @@ export default function ServersPage() {
           </div>
           <div className="flex gap-2">
             <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'جاري الحفظ...' : 'حفظ'}</button>
-            <button type="button" className="btn btn-secondary" onClick={resetForm}>إلغاء</button>
+            <button type="button" className="btn btn-secondary" onClick={resetForms}>إلغاء</button>
           </div>
           {message && <p className={`text-sm ${message.includes('تعذّر') ? 'text-red-600' : 'text-emerald-700'}`}>{message}</p>}
         </form>
@@ -207,7 +295,7 @@ export default function ServersPage() {
           </button>
         </div>
         {servers.length === 0 ? (
-          <p className="text-slate-500 text-center py-8">لا توجد سيرفرات — أضف أول سيرفر بث</p>
+          <p className="text-slate-500 text-center py-8">لا توجد سيرفرات — اربط أول سيرفر بث</p>
         ) : (
           <table className="w-full text-sm">
             <thead>
@@ -227,6 +315,9 @@ export default function ServersPage() {
                   <td className="py-3 font-medium text-slate-800">
                     {server.name}
                     {server.is_local && <span className="mr-2 text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">هذا الجهاز</span>}
+                    {server.metadata?.provision_status === 'success' && (
+                      <span className="mr-2 text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">مربوط</span>
+                    )}
                   </td>
                   <td className="py-3 font-mono text-xs">{server.hostname}</td>
                   <td className="py-3 font-mono text-xs">{server.ip_address || '—'}</td>

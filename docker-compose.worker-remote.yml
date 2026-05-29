@@ -1,0 +1,51 @@
+# سيرفر بث بعيد — worker + nginx لخدمة HLS فقط (يتصل بـ Postgres/Redis على السيرفر الرئيسي)
+services:
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sr-worker
+    restart: unless-stopped
+    command: ["node", "src/worker.js"]
+    healthcheck:
+      disable: true
+    env_file: .env
+    environment:
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      REDIS_HOST: ${REDIS_HOST}
+      SERVER_ROLE: stream-only
+      SERVER_ID: ${SERVER_ID:-node-2}
+      SERVER_IP: ${SERVER_IP}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
+      STREAMRELAY_HTTP_PORT: ${STREAMRELAY_HTTP_PORT:-8080}
+    volumes:
+      - ./backend/src:/app/src:ro
+      - hls_data:/var/www/hls
+      - mpegts_data:/var/www/mpegts
+      - logs_data:/var/log/streamrelay
+    networks:
+      - streamrelay
+
+  nginx-hls:
+    image: nginx:alpine
+    container_name: sr-nginx-hls
+    restart: unless-stopped
+    ports:
+      - "${STREAMRELAY_HTTP_PORT:-8080}:80"
+    volumes:
+      - hls_data:/var/www/hls:ro
+      - ./nginx/conf.d/hls-worker.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - worker
+    networks:
+      - streamrelay
+
+volumes:
+  hls_data:
+  mpegts_data:
+  logs_data:
+
+networks:
+  streamrelay:
+    driver: bridge

@@ -82,6 +82,16 @@ export const updateServerSchema = createServerSchema.partial().extend({
   is_active: z.boolean().optional(),
 });
 
+export const provisionServerSchema = z.object({
+  name: z.string().min(1).max(128).optional(),
+  ip_address: z.string().min(1).max(45),
+  ssh_username: z.string().min(1).max(64),
+  ssh_password: z.string().min(1).max(256),
+  ssh_port: z.coerce.number().int().min(1).max(65535).default(22),
+  hostname: z.string().min(1).max(255).regex(/^[a-zA-Z0-9._-]+$/).optional(),
+  max_streams: z.coerce.number().int().min(1).max(1000).default(100),
+});
+
 export const uploadSessionSchema = z.object({
   filename: z.string().min(1).max(255),
   total_size: z.coerce.number().int().min(1).max(4 * 1024 * 1024 * 1024),

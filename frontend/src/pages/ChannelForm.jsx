@@ -7,6 +7,7 @@ import {
   getCategoriesFull,
   uploadMovie,
   updateMovie,
+  getServers,
 } from '../api/client';
 import { ArrowRight, Film, Radio } from 'lucide-react';
 
@@ -22,6 +23,7 @@ const LIVE_DEFAULT = {
   is_public: true,
   description: '',
   logo_url: '',
+  server_id: '',
 };
 
 export default function ChannelForm() {
@@ -30,6 +32,7 @@ export default function ChannelForm() {
   const isEdit = Boolean(id);
 
   const [categories, setCategories] = useState([]);
+  const [streamServers, setStreamServers] = useState([]);
   const [contentType, setContentType] = useState('live');
   const [loading, setLoading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -39,6 +42,12 @@ export default function ChannelForm() {
 
   useEffect(() => {
     getCategoriesFull().then(({ data }) => setCategories(data || [])).catch(() => {});
+    getServers().then(({ data }) => {
+      const list = (data.servers || []).filter(
+        (s) => s.is_active && (s.role === 'stream-only' || s.role === 'full')
+      );
+      setStreamServers(list);
+    }).catch(() => {});
     if (isEdit) {
       getChannel(id).then(({ data }) => {
         const isMovie = data.content_type === 'vod';
@@ -55,6 +64,7 @@ export default function ChannelForm() {
           is_public: data.is_public !== false,
           description: data.description || '',
           logo_url: data.logo_url || data.poster_url || '',
+          server_id: data.server_id || '',
         });
       });
     }
@@ -110,6 +120,7 @@ export default function ChannelForm() {
         if (!payload.backup_source_url?.trim()) delete payload.backup_source_url;
         if (!payload.description?.trim()) delete payload.description;
         if (!payload.logo_url?.trim()) delete payload.logo_url;
+        payload.server_id = payload.server_id || null;
         if (isEdit) await updateChannel(id, payload);
         else await createChannel(payload);
       }
@@ -202,6 +213,19 @@ export default function ChannelForm() {
             <div>
               <label className="label">رابط احتياطي</label>
               <input className="input" name="backup_source_url" value={form.backup_source_url} onChange={handleChange} dir="ltr" />
+            </div>
+
+            <div>
+              <label className="label">سيرفر البث</label>
+              <select className="input" name="server_id" value={form.server_id} onChange={handleChange}>
+                <option value="">تلقائي — أقل حمل</option>
+                {streamServers.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} ({s.hostname}){s.online ? '' : ' — غير متصل'}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-slate-500 mt-1">اختر سيرفراً محدداً أو اترك «تلقائي» للتوزيع الذكي</p>
             </div>
 
             <div className="flex flex-wrap gap-5">

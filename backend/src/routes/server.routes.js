@@ -1,6 +1,7 @@
 import * as serverService from '../services/server.service.js';
+import * as provisionService from '../services/server-provision.service.js';
 import { requireMinRole } from '../middleware/auth.js';
-import { validate, createServerSchema, updateServerSchema } from '../middleware/validate.js';
+import { validate, createServerSchema, updateServerSchema, provisionServerSchema } from '../middleware/validate.js';
 
 export default async function serverRoutes(fastify) {
   fastify.addHook('preHandler', fastify.authenticate);
@@ -14,6 +15,18 @@ export default async function serverRoutes(fastify) {
   });
 
   fastify.get('/cluster', async () => serverService.getClusterSummary());
+
+  fastify.post('/provision', {
+    preHandler: [requireMinRole('admin'), validate(provisionServerSchema)],
+  }, async (request, reply) => {
+    try {
+      const result = await provisionService.provisionRemoteServer(request.body);
+      reply.status(201);
+      return result;
+    } catch (err) {
+      return reply.status(400).send({ error: err.message });
+    }
+  });
 
   fastify.post('/', {
     preHandler: [requireMinRole('admin'), validate(createServerSchema)],

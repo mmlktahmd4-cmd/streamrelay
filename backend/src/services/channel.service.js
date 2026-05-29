@@ -1,6 +1,7 @@
 import { query } from '../db/pool.js';
 import { generateSlug } from '../utils/crypto.js';
 import { getPublicUrls } from './public-url.service.js';
+import { getServerById } from './server.service.js';
 
 export async function listChannels({ page = 1, limit = 50, status, categoryId, search } = {}) {
   const conditions = ['c.is_active = true'];
@@ -26,9 +27,11 @@ export async function listChannels({ page = 1, limit = 50, status, categoryId, s
 
   const [channels, count] = await Promise.all([
     query(
-      `SELECT c.*, cat.name as category_name
+      `SELECT c.*, cat.name as category_name,
+              s.name as server_name, s.hostname as server_hostname
        FROM channels c
        LEFT JOIN categories cat ON c.category_id = cat.id
+       LEFT JOIN servers s ON c.server_id = s.id
        ${where}
        ORDER BY c.sort_order, c.name
        LIMIT $${idx++} OFFSET $${idx}`,
@@ -47,8 +50,11 @@ export async function listChannels({ page = 1, limit = 50, status, categoryId, s
 
 export async function getChannelById(id) {
   const result = await query(
-    `SELECT c.*, cat.name as category_name
-     FROM channels c LEFT JOIN categories cat ON c.category_id = cat.id
+    `SELECT c.*, cat.name as category_name,
+            s.name as server_name, s.hostname as server_hostname
+     FROM channels c
+     LEFT JOIN categories cat ON c.category_id = cat.id
+     LEFT JOIN servers s ON c.server_id = s.id
      WHERE c.id = $1`,
     [id]
   );
@@ -72,6 +78,13 @@ export async function createChannel(data) {
     }
   }
 
+  if (data.server_id) {
+    const server = await getServerById(data.server_id);
+    if (!server?.is_active) {
+      throw new Error('السيرفر المحدد غير موجود أو معطّل');
+    }
+  }
+
   const { hlsBase } = getPublicUrls();
   const outputUrl = `${hlsBase}/${slug}/index.m3u8`;
 
@@ -79,8 +92,8 @@ export async function createChannel(data) {
     `INSERT INTO channels (
        name, slug, description, logo_url, category_id, source_type, source_url,
        backup_source_url, output_format, output_url, transcode_enabled, transcode_profile,
-       auto_restart, epg_id, sort_order, is_public
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+       auto_restart, epg_id, sort_order, is_public, server_id
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
      RETURNING *`,
     [
       data.name, slug, data.description || null, data.logo_url || null,
@@ -90,6 +103,7 @@ export async function createChannel(data) {
       JSON.stringify(data.transcode_profile || { video_codec: 'copy', audio_codec: 'copy' }),
       data.auto_restart !== false, data.epg_id || null,
       data.sort_order || 0, data.is_public || false,
+      data.server_id || null,
     ]
   );
   return result.rows[0];
@@ -110,6 +124,13 @@ export async function updateChannel(id, data) {
     if (data[key] !== undefined) {
       sets.push(`${key} = $${idx++}`);
       values.push(key === 'transcode_profile' ? JSON.stringify(data[key]) : data[key]);
+    }
+  }
+
+  if (data.server_id) {
+    const server = await getServerById(data.server_id);
+    if (!server?.is_active) {
+      throw new Error('السيرفر المحدد غير موجود أو معطّل');
     }
   }
 

@@ -126,6 +126,7 @@ export async function createServer(data) {
   const metadata = normalizeMetadata({
     hls_base_url: data.hls_base_url,
     public_base_url: data.public_base_url,
+    ...(data.metadata || {}),
   });
 
   const result = await query(
@@ -246,10 +247,16 @@ export async function assignServerForChannel(channelId) {
 
   if (channel.server_id) {
     const pinned = streamServers.find((s) => s.id === channel.server_id);
-    if (pinned && pinned.online && pinned.current_streams < pinned.max_streams) {
-      return pinned;
+    if (!pinned || !pinned.is_active) {
+      throw new Error('السيرفر المحدد للقناة غير موجود أو معطّل');
     }
-    log.warn({ channelId, serverId: channel.server_id }, 'Pinned server unavailable — auto reassign');
+    if (!pinned.online) {
+      throw new Error(`السيرفر «${pinned.name}» غير متصل — شغّله أو غيّر اختيار القناة`);
+    }
+    if (pinned.current_streams >= pinned.max_streams) {
+      throw new Error(`السيرفر «${pinned.name}» ممتلئ (${pinned.current_streams}/${pinned.max_streams})`);
+    }
+    return pinned;
   }
 
   const pool = onlineServers.filter((s) => s.current_streams < s.max_streams);

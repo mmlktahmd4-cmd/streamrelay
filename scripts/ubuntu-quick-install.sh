@@ -45,7 +45,7 @@ if [ -d "$INSTALL_DIR/.git" ] && [ "${STREAMRELAY_REPO_SYNCED:-}" != "1" ]; then
   exec bash "$INSTALL_DIR/scripts/ubuntu-quick-install.sh" "$@"
 fi
 
-INSTALL_SCRIPT_VERSION="2026.05.29-7"
+INSTALL_SCRIPT_VERSION="2026.05.29-8"
 chmod +x "${SCRIPT_DIR}"/*.sh 2>/dev/null || true
 
 load_network_lib() {
@@ -228,6 +228,9 @@ POSTGRES_DB=streamrelay
 POSTGRES_USER=streamrelay
 POSTGRES_PASSWORD=${DB_PASS}
 
+POSTGRES_PUBLISH=0.0.0.0:5432
+REDIS_PUBLISH=0.0.0.0:6379
+
 REDIS_HOST=redis
 REDIS_PORT=6379
 REDIS_PASSWORD=
@@ -280,6 +283,11 @@ fi
 grep -q '^ADMIN_SYNC_PASSWORD=' .env \
   && sed -i 's|^ADMIN_SYNC_PASSWORD=.*|ADMIN_SYNC_PASSWORD=true|' .env \
   || echo "ADMIN_SYNC_PASSWORD=true" >> .env
+
+grep -q '^POSTGRES_PUBLISH=' .env \
+  || echo "POSTGRES_PUBLISH=0.0.0.0:5432" >> .env
+grep -q '^REDIS_PUBLISH=' .env \
+  || echo "REDIS_PUBLISH=0.0.0.0:6379" >> .env
 
 mkdir -p nginx/ssl data/hls data/vod data/logs
 

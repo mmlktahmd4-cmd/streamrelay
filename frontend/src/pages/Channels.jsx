@@ -249,6 +249,7 @@ export default function Channels() {
                 {isOperator && <th className="w-8" />}
                 <th>القناة</th>
                 <th className="hidden md:table-cell">النوع</th>
+                <th className="hidden lg:table-cell">السيرفر</th>
                 <th>الحالة</th>
                 <th className="hidden lg:table-cell">رابط البث</th>
                 <th className="text-left w-[1%]">إجراءات</th>
@@ -283,6 +284,13 @@ export default function Channels() {
                   <td className="hidden md:table-cell">
                     <span className="admin-tag text-[10px] py-0">{ch.source_type?.toUpperCase()}</span>
                     {ch.is_public && <span className="admin-tag admin-tag-blue text-[10px] py-0 mr-1">عامة</span>}
+                  </td>
+                  <td className="hidden lg:table-cell text-xs text-slate-600">
+                    {ch.server_name ? (
+                      <span title={ch.server_hostname}>{ch.server_name}</span>
+                    ) : (
+                      <span className="text-slate-400">تلقائي</span>
+                    )}
                   </td>
                   <td>
                     <StatusBadge status={ch.status} />
