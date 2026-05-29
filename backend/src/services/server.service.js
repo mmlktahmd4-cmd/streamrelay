@@ -1,6 +1,7 @@
 import { query } from '../db/pool.js';
 import { config } from '../config/index.js';
 import { createChildLogger } from '../utils/logger.js';
+import { getHostMetricsSnapshot } from '../utils/metrics.js';
 import { getPublicUrls } from './public-url.service.js';
 
 const log = createChildLogger('servers');
@@ -34,6 +35,10 @@ export function getServerLoadPercent(server) {
 function decorateServer(row) {
   if (!row) return null;
   const metadata = normalizeMetadata(row.metadata);
+  const hostStats = metadata.host_stats && typeof metadata.host_stats === 'object'
+    ? metadata.host_stats
+    : null;
+
   return {
     ...row,
     metadata,
@@ -42,6 +47,10 @@ function decorateServer(row) {
     is_local: row.hostname === config.serverId,
     hls_base_url: metadata.hls_base_url || null,
     public_base_url: metadata.public_base_url || null,
+    host_stats: hostStats,
+    cpu_percent: hostStats?.cpu?.usage_percent ?? null,
+    memory_percent: hostStats?.memory?.usage_percent ?? null,
+    disk_percent: hostStats?.disk?.usage_percent ?? null,
   };
 }
 
@@ -101,6 +110,13 @@ export async function getClusterSummary() {
   const online = streamServers.filter((s) => s.online);
   const totalMax = online.reduce((sum, s) => sum + (Number(s.max_streams) || 0), 0);
   const totalCurrent = online.reduce((sum, s) => sum + (Number(s.current_streams) || 0), 0);
+  const withStats = online.filter((s) => s.host_stats?.cpu);
+  const avgCpu = withStats.length > 0
+    ? Math.round(withStats.reduce((sum, s) => sum + (s.cpu_percent || 0), 0) / withStats.length)
+    : null;
+  const maxCpu = withStats.length > 0
+    ? Math.max(...withStats.map((s) => s.cpu_percent || 0))
+    : null;
 
   return {
     total_servers: servers.length,
@@ -109,6 +125,8 @@ export async function getClusterSummary() {
     total_max_streams: totalMax,
     total_current_streams: totalCurrent,
     cluster_load_percent: totalMax > 0 ? Math.round((totalCurrent / totalMax) * 100) : 0,
+    avg_cpu_percent: avgCpu,
+    max_cpu_percent: maxCpu,
     local_server_id: (await getLocalServer())?.id || null,
     local_hostname: config.serverId,
   };
@@ -261,13 +279,24 @@ export async function heartbeatLocalServer(activeCount = null) {
 
   let count = activeCount;
   if (count == null) {
-    count = await refreshServerStreamCount(local.id);
-  } else {
-    await query(
-      `UPDATE servers SET current_streams = $2, last_heartbeat = NOW() WHERE id = $1`,
-      [local.id, count]
+    const result = await query(
+      `SELECT COUNT(*) AS count FROM channels
+       WHERE server_id = $1 AND status IN ('running', 'starting', 'restarting') AND is_active = true`,
+      [local.id]
     );
+    count = parseInt(result.rows[0].count, 10);
   }
+
+  const fresh = await getServerById(local.id);
+  const metadata = normalizeMetadata({
+    ...fresh?.metadata,
+    host_stats: getHostMetricsSnapshot(),
+  });
+
+  await query(
+    `UPDATE servers SET current_streams = $2, last_heartbeat = NOW(), metadata = $3 WHERE id = $1`,
+    [local.id, count, JSON.stringify(metadata)]
+  );
 
   return getServerById(local.id);
 }

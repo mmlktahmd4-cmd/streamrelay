@@ -29,11 +29,122 @@ const emptyProvision = {
   max_streams: 100,
 };
 
-function LoadBar({ value }) {
-  const color = value >= 90 ? 'bg-red-500' : value >= 70 ? 'bg-amber-500' : 'bg-emerald-500';
+function LoadBar({ value, colorClass }) {
+  const color = colorClass || (value >= 90 ? 'bg-red-500' : value >= 70 ? 'bg-amber-500' : 'bg-emerald-500');
   return (
     <div className="h-2 bg-slate-100 rounded-full overflow-hidden min-w-[80px]">
       <div className={`h-full ${color} transition-all`} style={{ width: `${Math.min(100, value || 0)}%` }} />
+    </div>
+  );
+}
+
+function formatBytes(bytes) {
+  if (!bytes || bytes <= 0) return '—';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let v = bytes;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i += 1; }
+  return `${v.toFixed(i > 0 ? 1 : 0)} ${units[i]}`;
+}
+
+function formatUptime(sec) {
+  if (!sec || sec < 60) return `${sec || 0} ث`;
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  if (h > 0) return `${h} س ${m} د`;
+  return `${m} د`;
+}
+
+function MetricLine({ label, value, percent, barColor }) {
+  return (
+    <div>
+      <div className="flex justify-between text-xs text-slate-600 mb-1">
+        <span>{label}</span>
+        <span className="font-semibold text-slate-800">{value != null ? `${value}%` : '—'}</span>
+      </div>
+      <LoadBar value={percent ?? 0} colorClass={barColor} />
+    </div>
+  );
+}
+
+function ServerMetricsCard({ server, onEdit, onDelete }) {
+  const hs = server.host_stats;
+  const statsAge = hs?.collected_at
+    ? Math.round((Date.now() - new Date(hs.collected_at).getTime()) / 1000)
+    : null;
+
+  return (
+    <div className={`card p-4 ${!server.is_active ? 'opacity-60' : ''}`}>
+      <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
+        <div>
+          <h3 className="font-bold text-slate-800 flex flex-wrap items-center gap-2">
+            {server.name}
+            {server.is_local && <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">هذا الجهاز</span>}
+            {!server.is_active && <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded">معطّل</span>}
+          </h3>
+          <p className="font-mono text-xs text-slate-500 mt-0.5">{server.hostname} · {server.ip_address || '—'} · {roleLabels[server.role] || server.role}</p>
+        </div>
+        <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full ${!server.is_active ? 'bg-slate-100 text-slate-500' : server.online ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+          <span className={`w-2 h-2 rounded-full ${server.online ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
+          {!server.is_active ? 'معطّل' : server.online ? 'متصل' : 'غير متصل'}
+        </span>
+      </div>
+
+      <div className="mb-3">
+        <div className="flex justify-between text-xs text-slate-600 mb-1">
+          <span>حمل القنوات</span>
+          <span className="font-semibold">{server.current_streams}/{server.max_streams}</span>
+        </div>
+        <LoadBar value={server.load_percent} />
+      </div>
+
+      {hs ? (
+        <div className="space-y-2.5 mb-3">
+          <MetricLine label="المعالج CPU" value={server.cpu_percent} percent={server.cpu_percent} barColor="bg-blue-500" />
+          <MetricLine label="الذاكرة RAM" value={server.memory_percent} percent={server.memory_percent} barColor="bg-emerald-500" />
+          {server.disk_percent != null && (
+            <MetricLine label={`القرص ${hs.disk?.mount || ''}`} value={server.disk_percent} percent={server.disk_percent} barColor="bg-violet-500" />
+          )}
+        </div>
+      ) : (
+        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mb-3">
+          {server.online ? 'بانتظار أول تقرير موارد (خلال 30 ثانية)...' : 'لا توجد بيانات موارد — السيرفر غير متصل'}
+        </p>
+      )}
+
+      {hs && (
+        <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs text-slate-600 border-t border-slate-100 pt-3">
+          <span>المعالج:</span>
+          <span className="text-slate-800 truncate" title={hs.cpu?.model}>{hs.cpu?.model || '—'}</span>
+          <span>الأنوية:</span>
+          <span className="text-slate-800">{hs.cpu?.cores ?? '—'}</span>
+          <span>Load avg:</span>
+          <span className="text-slate-800 font-mono">{hs.cpu?.load_1} / {hs.cpu?.load_5} / {hs.cpu?.load_15}</span>
+          <span>الذاكرة:</span>
+          <span className="text-slate-800">{formatBytes(hs.memory?.used_bytes)} / {formatBytes(hs.memory?.total_bytes)}</span>
+          <span>القرص:</span>
+          <span className="text-slate-800">{hs.disk ? `${formatBytes(hs.disk.free_bytes)} متاح` : '—'}</span>
+          <span>نظام التشغيل:</span>
+          <span className="text-slate-800">{hs.os_type} {hs.arch}</span>
+          <span>وقت التشغيل:</span>
+          <span className="text-slate-800">{formatUptime(hs.uptime_sec)}</span>
+          {statsAge != null && (
+            <>
+              <span>آخر تحديث:</span>
+              <span className={statsAge > 120 ? 'text-amber-600' : 'text-slate-800'}>منذ {statsAge} ث</span>
+            </>
+          )}
+        </div>
+      )}
+
+      <div className="flex gap-1 mt-3 pt-3 border-t border-slate-100">
+        {server.is_active && (
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => onEdit(server)}><Pencil className="w-3.5 h-3.5" /> تعديل</button>
+        )}
+        {!server.is_local && (
+          <button type="button" className="btn btn-secondary btn-sm text-red-600" onClick={() => onDelete(server.id)}><Trash2 className="w-3.5 h-3.5" /></button>
+        )}
+      </div>
     </div>
   );
 }
@@ -62,7 +173,7 @@ export default function ServersPage() {
   useEffect(() => { loadServers(); }, []);
 
   useEffect(() => {
-    const interval = setInterval(loadServers, 15000);
+    const interval = setInterval(loadServers, 10000);
     return () => clearInterval(interval);
   }, []);
 
@@ -186,6 +297,9 @@ export default function ServersPage() {
             <p className="text-sm text-slate-500 flex items-center gap-1"><Activity className="w-4 h-4" /> حمل الكلاستر</p>
             <p className="text-3xl font-bold text-slate-800">{cluster.cluster_load_percent}%</p>
             <LoadBar value={cluster.cluster_load_percent} />
+            {cluster.avg_cpu_percent != null && (
+              <p className="text-xs text-slate-500 mt-2">CPU: {cluster.avg_cpu_percent}% · أقصى {cluster.max_cpu_percent}%</p>
+            )}
           </div>
         </div>
       )}
@@ -296,7 +410,7 @@ export default function ServersPage() {
 
       <div className="card overflow-x-auto">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-bold text-slate-800">السيرفرات المسجّلة</h2>
+          <h2 className="font-bold text-slate-800">مراقبة الموارد — كل سيرفر</h2>
           <button type="button" className="btn btn-secondary btn-sm" onClick={loadServers}>
             <RefreshCw className="w-4 h-4" /> تحديث
           </button>
@@ -304,58 +418,16 @@ export default function ServersPage() {
         {servers.length === 0 ? (
           <p className="text-slate-500 text-center py-8">لا توجد سيرفرات — اربط أول سيرفر بث</p>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-right text-slate-500 border-b border-slate-100">
-                <th className="py-2 font-medium">الاسم</th>
-                <th className="py-2 font-medium">Hostname</th>
-                <th className="py-2 font-medium">IP</th>
-                <th className="py-2 font-medium">الدور</th>
-                <th className="py-2 font-medium">الحمل</th>
-                <th className="py-2 font-medium">الحالة</th>
-                <th className="py-2 font-medium">إجراءات</th>
-              </tr>
-            </thead>
-            <tbody>
-              {servers.map((server) => (
-                <tr key={server.id} className={`border-b border-slate-50 last:border-0 ${!server.is_active ? 'opacity-50 bg-slate-50' : ''}`}>
-                  <td className="py-3 font-medium text-slate-800">
-                    {server.name}
-                    {server.is_local && <span className="mr-2 text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">هذا الجهاز</span>}
-                    {!server.is_active && <span className="mr-2 text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded">معطّل</span>}
-                    {server.metadata?.provision_status === 'success' && (
-                      <span className="mr-2 text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">مربوط</span>
-                    )}
-                  </td>
-                  <td className="py-3 font-mono text-xs">{server.hostname}</td>
-                  <td className="py-3 font-mono text-xs">{server.ip_address || '—'}</td>
-                  <td className="py-3 text-xs">{roleLabels[server.role] || server.role}</td>
-                  <td className="py-3">
-                    <div className="flex items-center gap-2 min-w-[120px]">
-                      <LoadBar value={server.load_percent} />
-                      <span className="text-xs text-slate-500 whitespace-nowrap">{server.current_streams}/{server.max_streams}</span>
-                    </div>
-                  </td>
-                  <td className="py-3">
-                    <span className={`inline-flex items-center gap-1 text-xs font-semibold ${!server.is_active ? 'text-slate-400' : server.online ? 'text-emerald-600' : 'text-slate-400'}`}>
-                      <span className={`w-2 h-2 rounded-full ${!server.is_active ? 'bg-slate-300' : server.online ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
-                      {!server.is_active ? 'معطّل' : server.online ? 'متصل' : 'غير متصل'}
-                    </span>
-                  </td>
-                  <td className="py-3">
-                    <div className="flex gap-1">
-                      {server.is_active && (
-                        <button type="button" className="btn-icon" onClick={() => handleEdit(server)} title="تعديل"><Pencil className="w-4 h-4" /></button>
-                      )}
-                      {!server.is_local && (
-                        <button type="button" className="btn-icon text-red-500" onClick={() => handleDelete(server.id)} title={server.is_active ? 'تعطيل' : 'إزالة من القائمة'}><Trash2 className="w-4 h-4" /></button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {servers.map((server) => (
+              <ServerMetricsCard
+                key={server.id}
+                server={server}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+              />
+            ))}
+          </div>
         )}
       </div>
     </div>

@@ -215,6 +215,44 @@ export function getSystemMetrics() {
   };
 }
 
+/** ملخص خفيف يُرسل مع heartbeat كل سيرفر */
+export function getHostMetricsSnapshot() {
+  const full = getSystemMetrics();
+  const disks = full.disk || [];
+  const rootDisk = disks.find((d) => d.mount === '/') || disks[0] || null;
+
+  return {
+    collected_at: full.timestamp,
+    hostname: full.hostname,
+    platform: full.platform,
+    os_type: full.os_type,
+    os_release: full.os_release,
+    arch: full.arch,
+    uptime_sec: Math.round(full.uptime || 0),
+    cpu: {
+      model: full.cpu?.model || 'Unknown',
+      cores: full.cpu?.cores || 0,
+      usage_percent: full.cpu?.usage_percent ?? 0,
+      load_1: full.cpu?.load_average?.[0] ?? 0,
+      load_5: full.cpu?.load_average?.[1] ?? 0,
+      load_15: full.cpu?.load_average?.[2] ?? 0,
+    },
+    memory: {
+      total_bytes: full.memory?.total_bytes ?? 0,
+      used_bytes: full.memory?.used_bytes ?? 0,
+      usage_percent: full.memory?.usage_percent ?? 0,
+    },
+    disk: rootDisk
+      ? {
+        mount: rootDisk.mount,
+        total_bytes: rootDisk.total_bytes,
+        free_bytes: rootDisk.free_bytes,
+        usage_percent: rootDisk.usage_percent,
+      }
+      : null,
+  };
+}
+
 export async function probeHlsManifest(slug, maxAgeMs = 45000) {
   const filePath = path.join(config.streaming.hlsDir, slug, 'index.m3u8');
 
