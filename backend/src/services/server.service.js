@@ -353,7 +353,10 @@ export async function updateServer(id, data) {
   const result = await query(
     `UPDATE servers
      SET name = COALESCE($2, name),
-         ip_address = COALESCE($3, ip_address),
+         ip_address = CASE
+           WHEN $3 IS NOT NULL AND $3 <> '' THEN $3::inet
+           ELSE ip_address
+         END,
          role = COALESCE($4, role),
          max_streams = COALESCE($5, max_streams),
          is_active = COALESCE($6, is_active),
@@ -537,7 +540,10 @@ export async function heartbeatLocalServer(activeCount = null) {
      SET current_streams = $2,
          last_heartbeat = NOW(),
          metadata = $3,
-         ip_address = COALESCE(NULLIF($4, ''), ip_address)
+         ip_address = CASE
+           WHEN $4 IS NOT NULL AND $4 <> '' THEN $4::inet
+           ELSE ip_address
+         END
      WHERE id = $1`,
     [local.id, count, JSON.stringify(metadata), serverIp || null]
   );
