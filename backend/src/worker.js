@@ -4,6 +4,7 @@ import { setupQueueProcessors, closeQueue } from './services/queue.service.js';
 import { recoverStreamsOnStartup } from './services/stream-recovery.service.js';
 import { heartbeatLocalServer, ensureLocalServerRecord } from './services/server.service.js';
 import { getActiveStreams } from './services/stream.service.js';
+import { startBandwidthMonitor } from './services/bandwidth.service.js';
 
 const log = createChildLogger('worker');
 
@@ -14,6 +15,7 @@ async function main() {
   await ensureLocalServerRecord();
   await setupQueueProcessors();
   await recoverStreamsOnStartup();
+  startBandwidthMonitor();
 
   const beat = () => {
     heartbeatLocalServer(getActiveStreams().length).catch((err) => {

@@ -33,7 +33,7 @@ services:
     ports:
       - "${REDIS_PUBLISH:-127.0.0.1:6379}:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli ${REDIS_PASSWORD:+-a \"$REDIS_PASSWORD\"} ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 5

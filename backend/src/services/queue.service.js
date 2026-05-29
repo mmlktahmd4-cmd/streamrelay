@@ -1,6 +1,7 @@
 import Bull from 'bull';
 import { config } from '../config/index.js';
-import { buildStreamJobPayload } from './server.service.js';
+import { buildStreamJobPayload, bindChannelToServer, getServerById } from './server.service.js';
+import { query } from '../db/pool.js';
 import { createChildLogger } from '../utils/logger.js';
 
 const log = createChildLogger('queue');
@@ -8,13 +9,53 @@ const log = createChildLogger('queue');
 let streamQueue = null;
 let processorsRegistered = false;
 
+const DEFER_ERR = 'DEFERRED_TO_TARGET_SERVER';
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function deferJobToTargetServer(job) {
   if (!job.data?.targetServerId || job.data.targetServerId === config.serverId) {
     return false;
   }
   await job.moveToDelayed(Date.now() + 2500);
   log.debug({ jobId: job.id, target: job.data.targetServerId, local: config.serverId }, 'Job deferred to target server');
-  return true;
+  const err = new Error(DEFER_ERR);
+  err.code = DEFER_ERR;
+  throw err;
+}
+
+async function prebindChannelForStart(name, channelId, payload) {
+  if (name !== 'start-channel' || !payload?.targetServerUuid) return;
+  const ch = await query('SELECT slug FROM channels WHERE id = $1', [channelId]);
+  const slug = ch.rows[0]?.slug;
+  if (!slug) return;
+  const server = await getServerById(payload.targetServerUuid);
+  if (server) {
+    await bindChannelToServer(channelId, server, slug);
+  }
+}
+
+async function waitForChannelState(channelId, predicate, timeoutMs, intervalMs = 1000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const r = await query(
+      'SELECT id, status, last_error FROM channels WHERE id = $1',
+      [channelId]
+    );
+    const ch = r.rows[0];
+    if (!ch) throw new Error('القناة غير موجودة');
+
+    const result = predicate(ch);
+    if (result === true) return ch;
+    if (result && typeof result === 'object') {
+      throw new Error(ch.last_error || 'فشل تنفيذ القناة');
+    }
+
+    await sleep(intervalMs);
+  }
+  throw new Error('انتهت مهلة انتظار تنفيذ القناة — تحقق أن worker السيرفر المستهدف يعمل');
 }
 
 export function getQueue() {
@@ -28,7 +69,10 @@ export function getQueue() {
     streamQueue = new Bull('streamrelay-jobs', { redis: redisOpts });
 
     streamQueue.on('error', (err) => log.error({ err }, 'Queue error'));
-    streamQueue.on('failed', (job, err) => log.error({ jobId: job.id, err }, 'Job failed'));
+    streamQueue.on('failed', (job, err) => {
+      if (err?.code === DEFER_ERR || err?.message === DEFER_ERR) return;
+      log.error({ jobId: job?.id, err }, 'Job failed');
+    });
   }
   return streamQueue;
 }
@@ -43,7 +87,7 @@ export async function setupQueueProcessors() {
   const queue = getQueue();
 
   queue.process('start-channel', async (job) => {
-    if (await deferJobToTargetServer(job)) return { deferred: true };
+    await deferJobToTargetServer(job);
     const { channelId } = job.data;
     log.info({ channelId, serverId: config.serverId }, 'Processing start-channel job');
     const { startStream } = await import('./stream.service.js');
@@ -51,7 +95,7 @@ export async function setupQueueProcessors() {
   });
 
   queue.process('stop-channel', async (job) => {
-    if (await deferJobToTargetServer(job)) return { deferred: true };
+    await deferJobToTargetServer(job);
     const { channelId, options = {} } = job.data;
     log.info({ channelId, serverId: config.serverId }, 'Processing stop-channel job');
     const { stopStream } = await import('./stream.service.js');
@@ -59,7 +103,7 @@ export async function setupQueueProcessors() {
   });
 
   queue.process('restart-channel', async (job) => {
-    if (await deferJobToTargetServer(job)) return { deferred: true };
+    await deferJobToTargetServer(job);
     const { channelId } = job.data;
     log.info({ channelId, serverId: config.serverId }, 'Processing restart-channel job');
     const channelService = await import('./channel.service.js');
@@ -86,9 +130,9 @@ export async function setupQueueProcessors() {
   queue.process('cleanup-hls', async () => {
     const fs = await import('fs/promises');
     const path = await import('path');
-    const { query } = await import('../db/pool.js');
+    const { query: dbQuery } = await import('../db/pool.js');
 
-    const stopped = await query(
+    const stopped = await dbQuery(
       `SELECT slug FROM channels WHERE status = 'stopped' AND updated_at < NOW() - INTERVAL '1 hour'`
     );
 
@@ -100,7 +144,6 @@ export async function setupQueueProcessors() {
     }
   });
 
-  // Schedule recurring health checks (refresh on startup so interval changes apply)
   const repeatable = await queue.getRepeatableJobs();
   for (const job of repeatable) {
     if (job.id === 'health-check-recurring' || job.name === 'health-check-all') {
@@ -113,7 +156,6 @@ export async function setupQueueProcessors() {
     jobId: 'health-check-recurring',
   });
 
-  // Schedule HLS cleanup every hour
   await queue.add('cleanup-hls', {}, {
     repeat: { every: 3600000 },
     jobId: 'cleanup-hls-recurring',
@@ -130,32 +172,55 @@ function jobActionFromName(name) {
 
 export async function enqueueStreamJob(name, channelId, queueOpts = {}, extraData = {}) {
   const payload = await buildStreamJobPayload(channelId, jobActionFromName(name));
+  await prebindChannelForStart(name, channelId, payload);
   const queue = getQueue();
   return queue.add(name, { ...payload, ...extraData }, {
     removeOnComplete: true,
     removeOnFail: 50,
+    attempts: 30,
+    backoff: { type: 'fixed', delay: 2500 },
     ...queueOpts,
   });
 }
 
-export async function runStreamJob(name, channelId, extraData = {}, timeoutMs = 60000) {
+export async function runStreamJob(name, channelId, extraData = {}, timeoutMs = 120000) {
   const payload = await buildStreamJobPayload(channelId, jobActionFromName(name));
+  await prebindChannelForStart(name, channelId, payload);
+
   const queue = getQueue();
-  const job = await queue.add(name, { ...payload, ...extraData }, {
+  await queue.add(name, { ...payload, ...extraData }, {
     removeOnComplete: true,
     removeOnFail: 50,
     timeout: timeoutMs,
+    attempts: 30,
+    backoff: { type: 'fixed', delay: 2500 },
   });
 
-  try {
-    return await job.finished();
-  } catch (err) {
-    const msg = err?.message || '';
-    if (msg.includes('timed out') || msg.includes('Timeout')) {
-      throw new Error('انتهت مهلة تشغيل القناة — تحقق أن خدمة worker تعمل أو أعد تشغيل السيرفر');
-    }
-    throw new Error(msg || `Stream job ${name} failed`);
+  if (name === 'start-channel') {
+    return waitForChannelState(
+      channelId,
+      (c) => (c.status === 'running' ? true : (c.status === 'error' ? { error: true } : false)),
+      timeoutMs
+    );
   }
+
+  if (name === 'stop-channel') {
+    return waitForChannelState(
+      channelId,
+      (c) => c.status === 'stopped',
+      timeoutMs
+    );
+  }
+
+  if (name === 'restart-channel') {
+    return waitForChannelState(
+      channelId,
+      (c) => (c.status === 'running' ? true : (c.status === 'error' ? { error: true } : false)),
+      timeoutMs
+    );
+  }
+
+  throw new Error(`Unsupported stream job: ${name}`);
 }
 
 export async function runStreamJobLegacy(name, data, timeoutMs = 60000) {

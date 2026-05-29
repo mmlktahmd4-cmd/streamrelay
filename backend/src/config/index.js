@@ -55,7 +55,7 @@ function resolvePublicUrl(envValue, pathSuffix = '') {
   return pathSuffix ? `${base}${pathSuffix}` : base;
 }
 
-const hlsBase = resolvePublicUrl(process.env.HLS_BASE_URL, '/hls');
+const hlsBase = resolvePublicUrl(process.env.HLS_BASE_URL, '/api/hls');
 const publicBase = resolvePublicUrl(process.env.PUBLIC_BASE_URL);
 
 function resolveAllowedOrigins() {

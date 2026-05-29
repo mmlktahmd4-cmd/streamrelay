@@ -139,7 +139,7 @@ sync_env_public_urls() {
   set_env_key STREAMRELAY_HTTP_PORT "$port"
   set_env_key SERVER_IP "$ip"
   set_env_key PUBLIC_BASE_URL "$base_url"
-  set_env_key HLS_BASE_URL "${base_url}/hls"
+  set_env_key HLS_BASE_URL "${base_url}/api/hls"
   set_env_key RTMP_INGEST_URL "rtmp://${ip}:1935/live"
   set_env_key ALLOWED_ORIGINS "$(allowed_origins_for "$base_url")"
   echo "$base_url"

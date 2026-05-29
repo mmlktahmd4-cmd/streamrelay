@@ -14,7 +14,7 @@ import { authenticate } from './middleware/auth.js';
 import { setupQueueProcessors } from './services/queue.service.js';
 import { stopAllStreams } from './services/stream.service.js';
 import { refreshPublicUrlCache, isOriginAllowed, startNetworkWatcher } from './services/public-url.service.js';
-import { startBandwidthMonitor, recordEgressBytes } from './services/bandwidth.service.js';
+import { recordEgressBytes } from './services/bandwidth.service.js';
 import { registerHlsRelayRoutes } from './services/hls-relay.service.js';
 
 import authRoutes from './routes/auth.routes.js';
@@ -24,7 +24,6 @@ import systemRoutes from './routes/system.routes.js';
 import mikrotikRoutes from './routes/mikrotik.routes.js';
 import categoryRoutes from './routes/category.routes.js';
 import serverRoutes from './routes/server.routes.js';
-import { startLocalServerHeartbeat } from './services/server.service.js';
 
 const log = createChildLogger('server');
 
@@ -164,7 +163,6 @@ async function main() {
     await runMigrations();
     await refreshPublicUrlCache();
     startNetworkWatcher();
-    startBandwidthMonitor();
 
     // معالجات الطابور (FFmpeg + health) — worker فقط؛ API يضيف jobs ولا ينفّذها
     if (config.serverRole !== 'api-only') {
@@ -174,10 +172,6 @@ async function main() {
     const app = await buildApp();
     await app.listen({ port: config.port, host: config.host });
     log.info({ port: config.port, role: config.serverRole }, 'StreamRelay API started');
-
-    if (config.serverRole === 'full') {
-      startLocalServerHeartbeat();
-    }
   } catch (err) {
     log.fatal({ err }, 'Failed to start server');
     process.exit(1);

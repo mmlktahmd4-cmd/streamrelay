@@ -3,6 +3,7 @@ import { config } from '../config/index.js';
 import { createChildLogger } from '../utils/logger.js';
 import { getHostMetricsSnapshot } from '../utils/metrics.js';
 import { getPublicUrls } from './public-url.service.js';
+import { normalizeInet } from '../utils/inet.js';
 
 const log = createChildLogger('servers');
 
@@ -138,8 +139,8 @@ export async function isChannelAssignedToLocalWorker(channel) {
   if (!channel) return false;
   const local = await getLocalServer();
   if (!local) return true;
-  if (!channel.server_id) return true;
-  return channel.server_id === local.id;
+  if (channel.server_id) return channel.server_id === local.id;
+  return config.serverRole !== 'api-only' && canRunStreams(local.role);
 }
 
 export async function ensureLocalServerRecord() {
@@ -350,11 +351,13 @@ export async function updateServer(id, data) {
     ...(data.metadata || {}),
   });
 
+  const ipParam = normalizeInet(data.ip_address);
+
   const result = await query(
     `UPDATE servers
      SET name = COALESCE($2, name),
          ip_address = CASE
-           WHEN $3 IS NOT NULL AND $3 <> '' THEN $3::inet
+           WHEN $3 IS NOT NULL THEN $3::inet
            ELSE ip_address
          END,
          role = COALESCE($4, role),
@@ -366,7 +369,7 @@ export async function updateServer(id, data) {
     [
       id,
       data.name?.trim() || null,
-      data.ip_address || null,
+      ipParam,
       data.role || null,
       data.max_streams != null ? Number(data.max_streams) : null,
       data.is_active != null ? !!data.is_active : null,
@@ -524,7 +527,7 @@ export async function heartbeatLocalServer(activeCount = null) {
   }
 
   const httpPort = parseInt(process.env.STREAMRELAY_HTTP_PORT || '8080', 10);
-  const serverIp = String(process.env.SERVER_IP || config.public?.lanIp || '').trim();
+  const serverIp = normalizeInet(process.env.SERVER_IP || config.public?.lanIp || '');
   const metadata = normalizeMetadata({
     ...rawMeta,
     host_stats: hostStats,
@@ -541,11 +544,11 @@ export async function heartbeatLocalServer(activeCount = null) {
          last_heartbeat = NOW(),
          metadata = $3,
          ip_address = CASE
-           WHEN $4 IS NOT NULL AND $4 <> '' THEN $4::inet
+           WHEN $4 IS NOT NULL THEN $4::inet
            ELSE ip_address
          END
      WHERE id = $1`,
-    [local.id, count, JSON.stringify(metadata), serverIp || null]
+    [local.id, count, JSON.stringify(metadata), serverIp]
   );
 
   return getServerById(local.id);
@@ -648,14 +651,7 @@ export async function assignServerForChannel(channelId) {
 
   let pool = onlineServers.filter((s) => s.current_streams < s.max_streams);
   if (pool.length === 0) {
-    pool = eligible.filter((s) => s.current_streams < s.max_streams);
-  }
-  if (pool.length === 0) {
-    const local = await getLocalServer();
-    if (local && canRunStreams(local.role) && !local.is_suspended && local.current_streams < local.max_streams) {
-      return local;
-    }
-    throw new Error('لا يوجد سيرفر بث متاح — أضف سيرفراً أو خفّف الحمل');
+    throw new Error('لا يوجد سيرفر بث متصل حالياً — تحقق من heartbeat أو أعد تشغيل worker');
   }
 
   pool.sort((a, b) => {

@@ -45,7 +45,7 @@ if [ -d "$INSTALL_DIR/.git" ] && [ "${STREAMRELAY_REPO_SYNCED:-}" != "1" ]; then
   exec bash "$INSTALL_DIR/scripts/ubuntu-quick-install.sh" "$@"
 fi
 
-INSTALL_SCRIPT_VERSION="2026.05.29-30"
+INSTALL_SCRIPT_VERSION="2026.05.29-31"
 chmod +x "${SCRIPT_DIR}"/*.sh 2>/dev/null || true
 
 load_network_lib() {
@@ -250,7 +250,7 @@ SERVER_IP=${SERVER_IP}
 SERVER_LAN_SUBNET=${SERVER_LAN_SUBNET}
 PUBLIC_BASE_URL=${BASE_URL}
 RTMP_INGEST_URL=rtmp://${SERVER_IP}:1935/live
-HLS_BASE_URL=${BASE_URL}/hls
+HLS_BASE_URL=${BASE_URL}/api/hls
 ALLOWED_ORIGINS=$(allowed_origins_for "${BASE_URL}")
 
 RATE_LIMIT_MAX=300
