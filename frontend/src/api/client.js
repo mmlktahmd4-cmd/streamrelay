@@ -17,49 +17,67 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// تجديد واحد مشترك — يمنع «عاصفة التجديد» عند فتح عدة قنوات معاً (كانت تسبب خروجاً تلقائياً)
+let refreshPromise = null;
+
+function refreshAccessTokenOnce() {
+  if (!refreshPromise) {
+    const refreshToken = localStorage.getItem('refresh_token');
+    if (!refreshToken) {
+      return Promise.reject({ _noRefreshToken: true });
+    }
+    refreshPromise = axios
+      .post(`${API_BASE}/auth/refresh`, { refresh_token: refreshToken })
+      .then(({ data }) => {
+        localStorage.setItem('access_token', data.access_token);
+        if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token);
+        return data.access_token;
+      })
+      .finally(() => { refreshPromise = null; });
+  }
+  return refreshPromise;
+}
+
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const original = error.config;
-    if (error.response?.status === 401 && !original._retry) {
-      const url = String(original?.url || '');
-      if (url.includes('/movies/upload')) {
-        return Promise.reject(error);
-      }
-
-      const reason = error.response?.data?.reason;
-      if (reason === 'session_replaced') {
-        clearAuthStorage();
-        if (!isAdminLoginPage() && !isViewerLoginPage()) {
-          window.location.href = getLoginPath('viewer');
-        }
-        return Promise.reject(error);
-      }
-
-      const isLoginRequest = String(original?.url || '').includes('/auth/login');
-      if (isLoginRequest) {
-        return Promise.reject(error);
-      }
-
-      original._retry = true;
-      const refreshToken = localStorage.getItem('refresh_token');
-      if (refreshToken) {
-        try {
-          const { data } = await axios.post(`${API_BASE}/auth/refresh`, {
-            refresh_token: refreshToken,
-          });
-          localStorage.setItem('access_token', data.access_token);
-          original.headers.Authorization = `Bearer ${data.access_token}`;
-          return api(original);
-        } catch {
-          clearAuthStorage();
-          if (!isAdminLoginPage() && !String(original?.url || '').includes('/auth/me')) {
-            window.location.href = getLoginPath('admin');
-          }
-        }
-      }
+    if (!original || error.response?.status !== 401 || original._retry) {
+      return Promise.reject(error);
     }
-    return Promise.reject(error);
+
+    const url = String(original?.url || '');
+    if (url.includes('/movies/upload') || url.includes('/auth/login') || url.includes('/auth/refresh')) {
+      return Promise.reject(error);
+    }
+
+    const reason = error.response?.data?.reason;
+    if (reason === 'session_replaced') {
+      clearAuthStorage();
+      if (!isAdminLoginPage() && !isViewerLoginPage()) {
+        window.location.href = getLoginPath('viewer');
+      }
+      return Promise.reject(error);
+    }
+
+    original._retry = true;
+    try {
+      const token = await refreshAccessTokenOnce();
+      original.headers.Authorization = `Bearer ${token}`;
+      return api(original);
+    } catch (refreshErr) {
+      // سجّل الخروج فقط إذا رُفض التوكن فعلاً (401/403) أو لا يوجد توكن —
+      // لا تُسجّل الخروج بسبب خطأ شبكة/مهلة/ضغط عابر
+      const status = refreshErr?.response?.status;
+      const fatal = refreshErr?._noRefreshToken || status === 401 || status === 403;
+      if (fatal) {
+        clearAuthStorage();
+        if (!isAdminLoginPage() && !url.includes('/auth/me')) {
+          window.location.href = getLoginPath('admin');
+        }
+      }
+      return Promise.reject(refreshErr);
+    }
   }
 );
 
