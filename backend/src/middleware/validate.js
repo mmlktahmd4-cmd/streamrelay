@@ -68,6 +68,18 @@ export const brandingSettingsSchema = z.object({
   vod_watch_notice: z.string().max(200).default('تشغيل فيلم من السيرفر المحلي'),
 });
 
+export const uploadSessionSchema = z.object({
+  filename: z.string().min(1).max(255),
+  total_size: z.coerce.number().int().min(1).max(4 * 1024 * 1024 * 1024),
+  name: z.string().max(255).optional(),
+  description: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().max(1000).optional()
+  ),
+  is_public: z.boolean().optional(),
+  poster_url: optionalUrl,
+});
+
 export const createChannelSchema = z.object({
   name: z.string().min(1).max(255),
   slug: z.string().min(1).max(255).optional(),

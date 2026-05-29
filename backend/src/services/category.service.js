@@ -29,6 +29,19 @@ function sanitizeExt(filename) {
   return ALLOWED_EXT.has(ext) ? ext : '.mp4';
 }
 
+function guessMimeType(filename, fallback = 'video/mp4') {
+  const ext = path.extname(filename || '').toLowerCase();
+  const map = {
+    '.mp4': 'video/mp4',
+    '.m4v': 'video/x-m4v',
+    '.mov': 'video/quicktime',
+    '.avi': 'video/x-msvideo',
+    '.mkv': 'video/x-matroska',
+    '.webm': 'video/webm',
+  };
+  return map[ext] || fallback;
+}
+
 async function categoryColumnsAvailable() {
   try {
     const result = await query(`
@@ -184,18 +197,7 @@ export async function uploadMovie({ categoryId, name, description, isPublic, pos
 
   const ext = sanitizeExt(filename);
   const mime = ALLOWED_MIME.has(mimetype) ? mimetype : 'video/mp4';
-  let slug = generateSlug(name);
-  let attempt = 0;
-
-  while (attempt < 20) {
-    const existing = await query('SELECT id FROM movies WHERE slug = $1 AND is_active = true', [slug]);
-    if (existing.rows.length === 0) break;
-    attempt += 1;
-    slug = `${generateSlug(name)}-${attempt + 1}`;
-  }
-
-  const storedName = `${slug}${ext}`;
-  const filePath = path.join(config.streaming.vodDir, storedName);
+  const { slug, storedName, filePath } = await resolveMoviePaths(name, filename);
 
   try {
     await pipeline(
@@ -209,6 +211,37 @@ export async function uploadMovie({ categoryId, name, description, isPublic, pos
     throw new Error(`فشل حفظ ملف الفيلم: ${err.message}`);
   }
 
+  return insertMovieRecord({
+    name,
+    slug,
+    description,
+    categoryId,
+    filePath,
+    mime,
+    storedName,
+    posterUrl,
+    isPublic,
+  });
+}
+
+async function resolveMoviePaths(name, filename) {
+  let slug = generateSlug(name);
+  let attempt = 0;
+
+  while (attempt < 20) {
+    const existing = await query('SELECT id FROM movies WHERE slug = $1 AND is_active = true', [slug]);
+    if (existing.rows.length === 0) break;
+    attempt += 1;
+    slug = `${generateSlug(name)}-${attempt + 1}`;
+  }
+
+  const ext = sanitizeExt(filename);
+  const storedName = `${slug}${ext}`;
+  const filePath = path.join(config.streaming.vodDir, storedName);
+  return { slug, storedName, filePath };
+}
+
+async function insertMovieRecord({ name, slug, description, categoryId, filePath, mime, storedName, posterUrl, isPublic }) {
   const stat = fs.statSync(filePath);
   const { baseUrl } = getPublicUrls();
   const outputUrl = `${baseUrl}/vod/${storedName}`;
@@ -220,6 +253,33 @@ export async function uploadMovie({ categoryId, name, description, isPublic, pos
   );
 
   return { ...result.rows[0], content_type: 'vod', status: 'running', logo_url: posterUrl || null };
+}
+
+/** إنهاء رفع مقطّع — نقل الملف المؤقت إلى VOD */
+export async function finalizeMovieFromTempFile({ categoryId, name, description, isPublic, posterUrl, tempFilePath, filename }) {
+  ensureVodDir();
+
+  if (categoryId) {
+    const category = await getCategoryById(categoryId);
+    if (!category) throw new Error('Category not found');
+  }
+
+  const { slug, storedName, filePath } = await resolveMoviePaths(name, filename);
+  fs.renameSync(tempFilePath, filePath);
+
+  const mime = guessMimeType(filename);
+
+  return insertMovieRecord({
+    name,
+    slug,
+    description,
+    categoryId,
+    filePath,
+    mime,
+    storedName,
+    posterUrl,
+    isPublic,
+  });
 }
 
 export async function updateMovie(id, data) {

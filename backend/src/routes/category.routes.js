@@ -1,6 +1,9 @@
 import * as categoryService from '../services/category.service.js';
+import * as movieUpload from '../services/movie-upload.service.js';
 import { requireMinRole } from '../middleware/auth.js';
-import { validate, createCategorySchema, updateCategorySchema, updateMovieSchema } from '../middleware/validate.js';
+import { validate, createCategorySchema, updateCategorySchema, updateMovieSchema, uploadSessionSchema } from '../middleware/validate.js';
+
+const uploadRouteConfig = { rateLimit: false };
 
 export default async function categoryRoutes(fastify) {
   fastify.addHook('preHandler', fastify.authenticate);
@@ -40,11 +43,86 @@ export default async function categoryRoutes(fastify) {
     reply.status(204);
   });
 
+  fastify.post('/:id/movies/upload/session', {
+    preHandler: [requireMinRole('operator'), validate(uploadSessionSchema)],
+    config: uploadRouteConfig,
+  }, async (request, reply) => {
+    try {
+      const session = await movieUpload.createUploadSession({
+        categoryId: request.params.id,
+        ...request.body,
+      });
+      reply.status(201);
+      return session;
+    } catch (err) {
+      return reply.status(400).send({ error: err.message });
+    }
+  });
+
+  fastify.post('/:id/movies/upload/session/:uploadId/chunk', {
+    preHandler: [requireMinRole('operator')],
+    config: uploadRouteConfig,
+  }, async (request, reply) => {
+    try {
+      const fields = {};
+      let chunkStream = null;
+
+      for await (const part of request.parts()) {
+        if (part.type === 'file') {
+          if (part.fieldname === 'chunk') {
+            chunkStream = part.file;
+          } else {
+            part.file.resume();
+          }
+        } else {
+          fields[part.fieldname] = part.value;
+        }
+      }
+
+      if (!chunkStream) {
+        return reply.status(400).send({ error: 'Chunk file is required' });
+      }
+
+      const result = await movieUpload.writeUploadChunk({
+        uploadId: request.params.uploadId,
+        categoryId: request.params.id,
+        chunkIndex: fields.chunk_index,
+        fileStream: chunkStream,
+      });
+
+      return result;
+    } catch (err) {
+      return reply.status(400).send({ error: err.message });
+    }
+  });
+
+  fastify.post('/:id/movies/upload/session/:uploadId/complete', {
+    preHandler: [requireMinRole('operator')],
+    config: uploadRouteConfig,
+  }, async (request, reply) => {
+    try {
+      const movie = await movieUpload.completeUploadSession({
+        uploadId: request.params.uploadId,
+        categoryId: request.params.id,
+      });
+      reply.status(201);
+      return movie;
+    } catch (err) {
+      return reply.status(400).send({ error: err.message });
+    }
+  });
+
+  fastify.delete('/:id/movies/upload/session/:uploadId', {
+    preHandler: [requireMinRole('operator')],
+    config: uploadRouteConfig,
+  }, async (request, reply) => {
+    await movieUpload.abortUploadSession(request.params.uploadId, request.params.id);
+    reply.status(204);
+  });
+
   fastify.post('/:id/movies/upload', {
     preHandler: [requireMinRole('operator')],
-    config: {
-      rateLimit: false,
-    },
+    config: uploadRouteConfig,
   }, async (request, reply) => {
     try {
       const fields = {};

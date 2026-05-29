@@ -22,6 +22,11 @@ api.interceptors.response.use(
   async (error) => {
     const original = error.config;
     if (error.response?.status === 401 && !original._retry) {
+      const url = String(original?.url || '');
+      if (url.includes('/movies/upload')) {
+        return Promise.reject(error);
+      }
+
       const reason = error.response?.data?.reason;
       if (reason === 'session_replaced') {
         clearAuthStorage();
@@ -111,28 +116,67 @@ export const deleteCategory = (id) => api.delete(`/categories/${id}`);
 export const deleteMovie = (id) => api.delete(`/categories/movies/${id}`);
 export const updateMovie = (id, data) => api.put(`/categories/movies/${id}`, data);
 
-export const uploadMovie = (categoryId, file, { name, description, is_public, poster_url, onProgress } = {}) => {
-  const form = new FormData();
-  if (name) form.append('name', name);
-  if (description) form.append('description', description);
-  if (poster_url) form.append('poster_url', poster_url);
-  form.append('is_public', is_public !== false ? 'true' : 'false');
-  form.append('file', file);
-
-  return api.post(`/categories/${categoryId}/movies/upload`, form, {
-    timeout: 86400000,
+export const uploadMovie = async (categoryId, file, { name, description, is_public, poster_url, onProgress } = {}) => {
+  const CHUNK_SIZE = 8 * 1024 * 1024;
+  const uploadConfig = {
+    timeout: 600000,
     maxBodyLength: Infinity,
     maxContentLength: Infinity,
     transformRequest: [(data, headers) => {
       delete headers['Content-Type'];
       return data;
     }],
-    onUploadProgress: (e) => {
-      if (onProgress && e.total) {
-        onProgress(Math.round((e.loaded * 100) / e.total));
-      }
-    },
+  };
+
+  const { data: session } = await api.post(`/categories/${categoryId}/movies/upload/session`, {
+    filename: file.name,
+    total_size: file.size,
+    name,
+    description,
+    is_public: is_public !== false,
+    poster_url,
   });
+
+  const uploadId = session.upload_id;
+  const chunkSize = session.chunk_size || CHUNK_SIZE;
+  const totalChunks = session.total_chunks || Math.ceil(file.size / chunkSize);
+  let uploadedBytes = 0;
+
+  try {
+    for (let index = 0; index < totalChunks; index += 1) {
+      const start = index * chunkSize;
+      const blob = file.slice(start, Math.min(start + chunkSize, file.size));
+      const form = new FormData();
+      form.append('chunk_index', String(index));
+      form.append('chunk', blob, `chunk-${index}`);
+
+      await api.post(`/categories/${categoryId}/movies/upload/session/${uploadId}/chunk`, form, {
+        ...uploadConfig,
+        onUploadProgress: (e) => {
+          if (onProgress && e.total) {
+            const current = uploadedBytes + e.loaded;
+            onProgress(Math.min(99, Math.round((current / file.size) * 100)));
+          }
+        },
+      });
+
+      uploadedBytes += blob.size;
+      if (onProgress) {
+        onProgress(Math.min(99, Math.round((uploadedBytes / file.size) * 100)));
+      }
+    }
+
+    const result = await api.post(`/categories/${categoryId}/movies/upload/session/${uploadId}/complete`, {}, {
+      timeout: 120000,
+    });
+    if (onProgress) onProgress(100);
+    return result;
+  } catch (err) {
+    try {
+      await api.delete(`/categories/${categoryId}/movies/upload/session/${uploadId}`);
+    } catch { /* ignore cleanup errors */ }
+    throw err;
+  }
 };
 
 // Users

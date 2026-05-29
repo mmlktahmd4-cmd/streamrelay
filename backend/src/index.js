@@ -30,7 +30,7 @@ async function buildApp() {
     logger: false,
     trustProxy: true,
     requestTimeout: 0,
-    connectionTimeout: 120000,
+    connectionTimeout: 0,
     bodyLimit: 4 * 1024 * 1024 * 1024,
   });
 
