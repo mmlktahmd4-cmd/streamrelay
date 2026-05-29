@@ -13,10 +13,30 @@ export function canRunStreams(role) {
 }
 
 function normalizeMetadata(input = {}) {
-  const meta = typeof input === 'object' && input ? { ...input } : {};
+  let raw = input;
+  if (typeof raw === 'string') {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      raw = {};
+    }
+  }
+  const meta = typeof raw === 'object' && raw ? { ...raw } : {};
   if (meta.hls_base_url) meta.hls_base_url = String(meta.hls_base_url).trim().replace(/\/$/, '');
   if (meta.public_base_url) meta.public_base_url = String(meta.public_base_url).trim().replace(/\/$/, '');
   return meta;
+}
+
+function attachLiveStats(server) {
+  if (!server) return server;
+  const snapshot = getHostMetricsSnapshot();
+  return {
+    ...server,
+    host_stats: snapshot,
+    cpu_percent: snapshot.cpu?.usage_percent ?? null,
+    memory_percent: snapshot.memory?.usage_percent ?? null,
+    disk_percent: snapshot.disk?.usage_percent ?? null,
+  };
 }
 
 export function isServerOnline(server, now = Date.now()) {
@@ -75,7 +95,7 @@ export async function ensureLocalServerRecord() {
   if (existing) {
     await query(
       `UPDATE servers
-       SET role = $2, max_streams = $3, is_active = true, last_heartbeat = NOW()
+       SET role = $2, max_streams = $3, is_active = true
        WHERE id = $1`,
       [existing.id, config.serverRole, config.streaming.maxConcurrent]
     );
@@ -101,7 +121,13 @@ export async function ensureLocalServerRecord() {
 
 export async function listServers() {
   const result = await query('SELECT * FROM servers ORDER BY name ASC, created_at ASC');
-  return result.rows.map(decorateServer);
+  return result.rows.map((row) => {
+    const server = decorateServer(row);
+    if (server.is_local && !server.host_stats) {
+      return attachLiveStats(server);
+    }
+    return server;
+  });
 }
 
 export async function getClusterSummary() {
@@ -267,7 +293,7 @@ export async function refreshServerStreamCount(serverId) {
   );
   const count = parseInt(result.rows[0].count, 10);
   await query(
-    `UPDATE servers SET current_streams = $2, last_heartbeat = NOW() WHERE id = $1`,
+    `UPDATE servers SET current_streams = $2 WHERE id = $1`,
     [serverId, count]
   );
   return count;
@@ -306,6 +332,18 @@ export async function heartbeatLocalServer(activeCount = null) {
   );
 
   return getServerById(local.id);
+}
+
+export function startLocalServerHeartbeat() {
+  const tick = () => {
+    heartbeatLocalServer(null).catch((err) => {
+      log.warn({ err: err.message }, 'Server stats heartbeat failed');
+    });
+  };
+  tick();
+  const interval = setInterval(tick, 30_000);
+  interval.unref();
+  log.info('Server stats heartbeat started (every 30s)');
 }
 
 export function getHlsBaseForServer(server) {

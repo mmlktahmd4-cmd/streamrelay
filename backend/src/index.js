@@ -23,6 +23,7 @@ import systemRoutes from './routes/system.routes.js';
 import mikrotikRoutes from './routes/mikrotik.routes.js';
 import categoryRoutes from './routes/category.routes.js';
 import serverRoutes from './routes/server.routes.js';
+import { startLocalServerHeartbeat } from './services/server.service.js';
 
 const log = createChildLogger('server');
 
@@ -179,6 +180,10 @@ async function main() {
     const app = await buildApp();
     await app.listen({ port: config.port, host: config.host });
     log.info({ port: config.port, role: config.serverRole }, 'StreamRelay API started');
+
+    if (config.serverRole === 'api-only' || config.serverRole === 'full') {
+      startLocalServerHeartbeat();
+    }
   } catch (err) {
     log.fatal({ err }, 'Failed to start server');
     process.exit(1);

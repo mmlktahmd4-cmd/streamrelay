@@ -108,7 +108,11 @@ function ServerMetricsCard({ server, onEdit, onDelete }) {
         </div>
       ) : (
         <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mb-3">
-          {server.online ? 'بانتظار أول تقرير موارد (خلال 30 ثانية)...' : 'لا توجد بيانات موارد — السيرفر غير متصل'}
+          {server.online
+            ? (server.is_local
+              ? 'لا توجد بيانات موارد — أعد تشغيل api/worker: docker compose restart api worker'
+              : 'لا توجد بيانات من worker — على السيرفر البعيد: docker compose -f docker-compose.worker-remote.yml ps && docker compose -f docker-compose.worker-remote.yml logs worker --tail 30')
+            : 'لا توجد بيانات موارد — السيرفر غير متصل (worker لا يرسل heartbeat)'}
         </p>
       )}
 

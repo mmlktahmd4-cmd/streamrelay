@@ -17,7 +17,7 @@ async function main() {
 
   const beat = () => {
     heartbeatLocalServer(getActiveStreams().length).catch((err) => {
-      log.debug({ err: err.message }, 'Heartbeat failed');
+      log.warn({ err: err.message }, 'Worker heartbeat failed');
     });
   };
   beat();
