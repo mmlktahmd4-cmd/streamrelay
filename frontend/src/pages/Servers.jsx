@@ -262,7 +262,7 @@ export default function ServersPage() {
   }, [showInactive]);
 
   useEffect(() => {
-    const interval = setInterval(loadServers, 10000);
+    const interval = setInterval(loadServers, 15000);
     return () => clearInterval(interval);
   }, [showInactive]);
 

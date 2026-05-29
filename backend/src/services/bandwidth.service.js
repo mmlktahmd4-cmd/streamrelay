@@ -11,7 +11,7 @@ const log = createChildLogger('bandwidth');
 
 const PREFIX = 'sr:bandwidth:';
 const HOST_PREFIX = `${PREFIX}host:`;
-const POLL_MS = 1000;
+const POLL_MS = 3000;
 const BPS_WINDOW_SEC = 3;
 const TTL_SEC = 10;
 

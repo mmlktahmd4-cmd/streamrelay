@@ -45,7 +45,7 @@ export default function Channels() {
 
   useEffect(() => {
     fetchChannels();
-    const interval = setInterval(fetchChannels, 3000);
+    const interval = setInterval(fetchChannels, 10000);
     return () => clearInterval(interval);
   }, [search]);
 

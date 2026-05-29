@@ -3,7 +3,7 @@ import { getPlaybackUrl } from '../../api/client';
 import { copyText } from '../../utils/clipboard';
 import { Copy, Check, Link2, Loader2 } from 'lucide-react';
 
-export default function RelayUrlCopy({ channelId, status, autoLoad = true, compact = false }) {
+export default function RelayUrlCopy({ channelId, status, autoLoad = false, compact = false }) {
   const [url, setUrl] = useState('');
   const [streamServer, setStreamServer] = useState('');
   const [loading, setLoading] = useState(false);
@@ -103,6 +103,10 @@ export default function RelayUrlCopy({ channelId, status, autoLoad = true, compa
         ) : error && !url ? (
           <button type="button" onClick={loadUrl} className="text-[10px] text-red-600 hover:underline">
             {error} — إعادة
+          </button>
+        ) : !url ? (
+          <button type="button" onClick={loadUrl} className="text-[10px] text-blue-600 hover:underline">
+            عرض / نسخ رابط البث
           </button>
         ) : (
             <>

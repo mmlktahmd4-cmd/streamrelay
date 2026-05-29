@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { getDashboard, getBandwidth, restartServer, getHealth, refreshNetwork } from '../api/client';
+import { getDashboard, restartServer, getHealth, refreshNetwork } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import {
@@ -97,36 +97,16 @@ export default function Dashboard() {
     try {
       const { data: d } = await getDashboard();
       setData(d);
+      if (d?.bandwidth) setBandwidth(d.bandwidth);
     } catch { /* ignore */ }
     setLoading(false);
   }, []);
 
   useEffect(() => {
-    const init = async () => {
-      try {
-        const { data: net } = await refreshNetwork();
-        if (net?.urls) {
-          setData((prev) => (prev ? { ...prev, network: net.urls } : prev));
-        }
-      } catch { /* ignore */ }
-      fetchDashboard();
-    };
-    init();
-    const interval = setInterval(fetchDashboard, 5000);
+    fetchDashboard();
+    const interval = setInterval(fetchDashboard, 10000);
     return () => clearInterval(interval);
   }, [fetchDashboard]);
-
-  useEffect(() => {
-    const fetchBw = async () => {
-      try {
-        const { data: bw } = await getBandwidth();
-        setBandwidth(bw);
-      } catch { /* ignore */ }
-    };
-    fetchBw();
-    const interval = setInterval(fetchBw, 1000);
-    return () => clearInterval(interval);
-  }, []);
 
   const waitForServer = async (maxMs = 90000) => {
     const start = Date.now();
@@ -271,7 +251,7 @@ export default function Dashboard() {
             </h2>
             <span className="text-xs text-emerald-600 flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              تحديث كل ثانية
+              تحديث كل 10 ثوان
             </span>
           </div>
           <div className="overflow-x-auto">
