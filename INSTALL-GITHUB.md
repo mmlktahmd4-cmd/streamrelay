@@ -130,3 +130,4 @@ sudo bash scripts/launch-production.sh
 
 - المستودع: https://github.com/mmlktahmd4-cmd/streamrelay
 - دليل Ubuntu: [docs/INSTALL-UBUNTU-22.md](docs/INSTALL-UBUNTU-22.md)
+- **ربط سيرفر بث يدوياً:** [docs/MANUAL-SERVER-LINKING.md](docs/MANUAL-SERVER-LINKING.md)
