@@ -1,4 +1,3 @@
-import { Client } from 'ssh2';
 import { readFile } from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -7,6 +6,7 @@ import { getPublicUrls } from './public-url.service.js';
 import * as serverService from './server.service.js';
 import { createChildLogger } from '../utils/logger.js';
 import { isDockerBridgeIp } from '../utils/network-ip.js';
+import { execRemoteScript, normalizeScript } from '../utils/server-ssh.js';
 
 const log = createChildLogger('server-provision');
 
@@ -20,14 +20,6 @@ const SCRIPT_PATHS = [
 ];
 
 const REMOTE_SCRIPT = '/tmp/streamrelay-provision.sh';
-
-function shellQuote(value) {
-  return `'${String(value ?? '').replace(/'/g, `'\\''`)}'`;
-}
-
-function normalizeScript(text) {
-  return String(text).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-}
 
 function resolveMasterIp(urls) {
   const candidates = [
@@ -61,86 +53,6 @@ async function loadProvisionScript() {
   throw new Error('سكربت الربط غير موجود — نفّذ safe-update.sh على السيرفر الرئيسي');
 }
 
-function connectSsh({ host, port, username, password }) {
-  return new Promise((resolve, reject) => {
-    const conn = new Client();
-    conn.on('ready', () => resolve(conn));
-    conn.on('error', (err) => reject(new Error(`فشل SSH: ${err.message}`)));
-    conn.connect({
-      host,
-      port: port || 22,
-      username,
-      password,
-      readyTimeout: 30_000,
-      tryKeyboard: false,
-    });
-  });
-}
-
-function uploadScript(conn, script) {
-  return new Promise((resolve, reject) => {
-    conn.sftp((err, sftp) => {
-      if (err) return reject(err);
-      const stream = sftp.createWriteStream(REMOTE_SCRIPT, { mode: 0o755 });
-      stream.on('error', reject);
-      stream.on('close', resolve);
-      stream.end(Buffer.from(script, 'utf8'));
-    });
-  });
-}
-
-function runRemote(conn, command) {
-  return new Promise((resolve, reject) => {
-    let stdout = '';
-    let stderr = '';
-    conn.exec(command, (err, stream) => {
-      if (err) return reject(err);
-      stream.on('data', (chunk) => { stdout += chunk.toString(); });
-      stream.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
-      stream.on('close', (code) => {
-        if (code === 0) resolve({ stdout, stderr });
-        else {
-          const detail = (stderr || stdout).trim().slice(-3000);
-          reject(new Error(detail || `فشل الأمر (exit ${code})`));
-        }
-      });
-    });
-  });
-}
-
-function buildRunCommand({ username, password, env }) {
-  const envExports = Object.entries(env)
-    .map(([key, value]) => `${key}=${shellQuote(value)}`)
-    .join(' ');
-
-  const scriptCall = `bash ${REMOTE_SCRIPT}`;
-
-  if (username === 'root') {
-    return `export ${envExports} && ${scriptCall}`;
-  }
-
-  return `export ${envExports} && (echo ${shellQuote(password)} | sudo -S -p '' ${scriptCall} || sudo -n ${scriptCall})`;
-}
-
-async function execSshProvision({ host, port, username, password, script, env }) {
-  const conn = await connectSsh({ host, port, username, password });
-  const timeout = setTimeout(() => {
-    conn.end();
-  }, 600_000);
-
-  try {
-    await runRemote(conn, 'uname -a');
-    await uploadScript(conn, script);
-    const command = buildRunCommand({ username, password, env });
-    log.info({ host, username }, 'Running provision script');
-    const result = await runRemote(conn, command);
-    return result;
-  } finally {
-    clearTimeout(timeout);
-    conn.end();
-  }
-}
-
 export async function provisionRemoteServer({
   name,
   ip_address,
@@ -149,6 +61,7 @@ export async function provisionRemoteServer({
   ssh_port,
   hostname,
   max_streams,
+  save_ssh_for_updates = true,
 }) {
   const ip = String(ip_address || '').trim();
   const username = String(ssh_username || '').trim();
@@ -189,16 +102,27 @@ export async function provisionRemoteServer({
 
   log.info({ ip, serverId, masterIp, httpPort }, 'Starting SSH provision');
 
-  const { stdout, stderr } = await execSshProvision({
+  const { stdout, stderr } = await execRemoteScript({
     host: ip,
     port: ssh_port || 22,
     username,
     password: ssh_password,
     script,
+    remotePath: REMOTE_SCRIPT,
     env,
+    timeoutMs: 600_000,
   });
 
   log.info({ ip, serverId, stdoutLen: stdout.length }, 'SSH provision finished');
+
+  const sshMeta = save_ssh_for_updates !== false
+    ? {
+      ssh_username: username,
+      ssh_password: String(ssh_password),
+      ssh_port: Number(ssh_port) || 22,
+      auto_remote_update: true,
+    }
+    : {};
 
   const server = await serverService.createServer({
     name: String(name || `Server ${serverId}`).trim(),
@@ -211,9 +135,9 @@ export async function provisionRemoteServer({
     metadata: {
       provision_status: 'success',
       provision_at: new Date().toISOString(),
-      ssh_username: username,
       master_ip: masterIp,
       provision_log: (stderr || stdout).trim().slice(-4000) || undefined,
+      ...sshMeta,
     },
   });
 
@@ -221,5 +145,6 @@ export async function provisionRemoteServer({
     server,
     log: (stderr || stdout).trim().slice(-2000),
     master_ip: masterIp,
+    ssh_saved: !!sshMeta.ssh_password,
   };
 }

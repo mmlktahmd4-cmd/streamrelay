@@ -278,7 +278,11 @@ docker compose -f docker-compose.worker-remote.yml logs worker -f
 docker compose -f docker-compose.worker-remote.yml restart worker
 ```
 
-### تحديث السيرفر البعيد بعد `git pull`
+### تحديث السيرفر البعيد
+
+**تلقائياً (مُوصى به):** بعد `safe-update.sh` على الرئيسي، يُحدَّث كل سيرفر بعيد لديه بيانات SSH محفوظة (من الربط التلقائي أو زر SSH في اللوحة).
+
+**يدوياً:**
 
 ```bash
 cd /opt/streamrelay
@@ -286,6 +290,8 @@ sudo git pull origin main
 sudo docker compose -f docker-compose.worker-remote.yml build worker nginx-hls
 sudo docker compose -f docker-compose.worker-remote.yml up -d
 ```
+
+لتعطيل التحديث التلقائي للبعيد على الرئيسي: `AUTO_UPDATE_REMOTES=0` في `.env`.
 
 ---
 

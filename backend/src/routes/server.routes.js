@@ -1,14 +1,16 @@
 import * as serverService from '../services/server.service.js';
 import * as provisionService from '../services/server-provision.service.js';
+import * as remoteUpdateService from '../services/server-remote-update.service.js';
 import { requireMinRole } from '../middleware/auth.js';
-import { validate, createServerSchema, updateServerSchema, provisionServerSchema } from '../middleware/validate.js';
+import { validate, createServerSchema, updateServerSchema, provisionServerSchema, serverSshSchema } from '../middleware/validate.js';
 
 export default async function serverRoutes(fastify) {
   fastify.addHook('preHandler', fastify.authenticate);
 
-  fastify.get('/', async () => {
+  fastify.get('/', async (request) => {
+    const includeInactive = request.query?.all === '1' || request.query?.include_inactive === '1';
     const [servers, cluster] = await Promise.all([
-      serverService.listServers(),
+      serverService.listServers({ includeInactive }),
       serverService.getClusterSummary(),
     ]);
     return { servers, cluster };
@@ -43,6 +45,62 @@ export default async function serverRoutes(fastify) {
     }
   });
 
+  fastify.post('/sync-remotes', {
+    preHandler: [requireMinRole('admin')],
+  }, async (request, reply) => {
+    try {
+      return await remoteUpdateService.syncAllRemoteWorkers();
+    } catch (err) {
+      return reply.status(400).send({ error: err.message });
+    }
+  });
+
+  fastify.post('/:id/update-remote', {
+    preHandler: [requireMinRole('admin')],
+  }, async (request, reply) => {
+    try {
+      return await remoteUpdateService.updateRemoteServer(request.params.id);
+    } catch (err) {
+      return reply.status(400).send({ error: err.message, log: err.log });
+    }
+  });
+
+  fastify.put('/:id/ssh', {
+    preHandler: [requireMinRole('admin'), validate(serverSshSchema)],
+  }, async (request, reply) => {
+    try {
+      const server = await remoteUpdateService.saveServerSshCredentials(
+        request.params.id,
+        request.body
+      );
+      return server;
+    } catch (err) {
+      return reply.status(400).send({ error: err.message });
+    }
+  });
+
+  fastify.post('/:id/suspend', {
+    preHandler: [requireMinRole('admin')],
+  }, async (request, reply) => {
+    try {
+      const result = await serverService.suspendServer(request.params.id);
+      return result;
+    } catch (err) {
+      return reply.status(400).send({ error: err.message });
+    }
+  });
+
+  fastify.post('/:id/unsuspend', {
+    preHandler: [requireMinRole('admin')],
+  }, async (request, reply) => {
+    try {
+      const result = await serverService.unsuspendServer(request.params.id);
+      return result;
+    } catch (err) {
+      return reply.status(400).send({ error: err.message });
+    }
+  });
+
   fastify.put('/:id', {
     preHandler: [requireMinRole('admin'), validate(updateServerSchema)],
   }, async (request, reply) => {
@@ -59,8 +117,8 @@ export default async function serverRoutes(fastify) {
     preHandler: [requireMinRole('admin')],
   }, async (request, reply) => {
     try {
-      await serverService.deleteServer(request.params.id);
-      reply.status(204);
+      const result = await serverService.deleteServer(request.params.id);
+      return result;
     } catch (err) {
       return reply.status(400).send({ error: err.message });
     }

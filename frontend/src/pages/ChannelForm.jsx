@@ -220,12 +220,13 @@ export default function ChannelForm() {
               <select className="input" name="server_id" value={form.server_id} onChange={handleChange}>
                 <option value="">تلقائي — أقل حمل</option>
                 {streamServers.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} ({s.hostname}){s.online ? '' : ' — غير متصل'}
+                  <option key={s.id} value={s.id} disabled={s.is_suspended && s.id !== form.server_id}>
+                    {s.name} ({s.hostname})
+                    {s.is_suspended ? ' — معلّق' : s.online ? '' : ' — غير متصل'}
                   </option>
                 ))}
               </select>
-              <p className="text-xs text-slate-500 mt-1">اختر سيرفراً محدداً أو اترك «تلقائي» للتوزيع الذكي</p>
+              <p className="text-xs text-slate-500 mt-1">اختر سيرفراً محدداً أو اترك «تلقائي» للتوزيع الذكي (السيرفرات المعلّقة غير متاحة)</p>
             </div>
 
             <div className="flex flex-wrap gap-5">

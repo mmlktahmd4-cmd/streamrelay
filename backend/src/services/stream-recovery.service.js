@@ -27,6 +27,11 @@ export async function recoverStreamsOnStartup() {
   const { getLocalServer } = await import('./server.service.js');
   const localServer = await getLocalServer();
 
+  if (localServer?.is_suspended) {
+    log.info('Local server suspended — skipping startup auto-start');
+    return { queued: 0, skipped: 'local_suspended' };
+  }
+
   const channels = await channelService.getChannelsForAutoStart();
   const activeMap = new Map(getActiveStreams().map((s) => [s.channelId, s]));
   let queued = 0;

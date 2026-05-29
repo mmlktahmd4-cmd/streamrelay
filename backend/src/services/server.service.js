@@ -52,9 +52,16 @@ export function getServerLoadPercent(server) {
   return Math.min(100, Math.round((current / max) * 100));
 }
 
+function sanitizeMetadataForClient(metadata = {}) {
+  const meta = { ...metadata };
+  const configured = !!(meta.ssh_username && meta.ssh_password);
+  delete meta.ssh_password;
+  return { ...meta, ssh_configured: configured };
+}
+
 function decorateServer(row) {
   if (!row) return null;
-  const metadata = normalizeMetadata(row.metadata);
+  const metadata = sanitizeMetadataForClient(normalizeMetadata(row.metadata));
   const hostStats = metadata.host_stats && typeof metadata.host_stats === 'object'
     ? metadata.host_stats
     : null;
@@ -63,6 +70,7 @@ function decorateServer(row) {
     ...row,
     metadata,
     online: isServerOnline(row),
+    is_suspended: !!metadata.suspended,
     load_percent: getServerLoadPercent(row),
     is_local: row.hostname === config.serverId,
     hls_base_url: metadata.hls_base_url || null,
@@ -77,6 +85,27 @@ function decorateServer(row) {
 export async function getServerById(id) {
   const result = await query('SELECT * FROM servers WHERE id = $1', [id]);
   return decorateServer(result.rows[0] || null);
+}
+
+export async function getServerMetadataRaw(id) {
+  const result = await query('SELECT metadata FROM servers WHERE id = $1', [id]);
+  if (!result.rows[0]) return null;
+  return normalizeMetadata(result.rows[0]?.metadata);
+}
+
+export async function patchServerMetadata(id, patch) {
+  const existing = await getServerMetadataRaw(id);
+  if (existing === null) throw new Error('السيرفر غير موجود');
+  const metadata = normalizeMetadata({ ...existing });
+  for (const [key, value] of Object.entries(patch || {})) {
+    if (value === undefined) delete metadata[key];
+    else metadata[key] = value;
+  }
+  await query(
+    `UPDATE servers SET metadata = $2 WHERE id = $1`,
+    [id, JSON.stringify(metadata)]
+  );
+  return getServerById(id);
 }
 
 export async function getServerByHostname(hostname) {
@@ -119,8 +148,11 @@ export async function ensureLocalServerRecord() {
   return decorateServer(result.rows[0]);
 }
 
-export async function listServers() {
-  const result = await query('SELECT * FROM servers ORDER BY name ASC, created_at ASC');
+export async function listServers({ includeInactive = false } = {}) {
+  const sql = includeInactive
+    ? 'SELECT * FROM servers ORDER BY name ASC, created_at ASC'
+    : 'SELECT * FROM servers WHERE is_active = true ORDER BY name ASC, created_at ASC';
+  const result = await query(sql);
   return result.rows.map((row) => {
     const server = decorateServer(row);
     if (server.is_local && !server.host_stats) {
@@ -133,7 +165,7 @@ export async function listServers() {
 export async function getClusterSummary() {
   const servers = await listServers();
   const streamServers = servers.filter((s) => s.is_active && canRunStreams(s.role));
-  const online = streamServers.filter((s) => s.online);
+  const online = streamServers.filter((s) => s.online && !s.is_suspended);
   const totalMax = online.reduce((sum, s) => sum + (Number(s.max_streams) || 0), 0);
   const totalCurrent = online.reduce((sum, s) => sum + (Number(s.current_streams) || 0), 0);
   const withStats = online.filter((s) => s.host_stats?.cpu);
@@ -159,8 +191,8 @@ export async function getClusterSummary() {
 }
 
 export async function suggestNextHostname() {
-  const servers = await listServers();
-  const used = new Set(servers.map((s) => s.hostname));
+  const result = await query('SELECT hostname FROM servers');
+  const used = new Set(result.rows.map((r) => r.hostname));
   let n = 2;
   while (used.has(`node-${n}`)) n += 1;
   return `node-${n}`;
@@ -239,10 +271,11 @@ export async function updateServer(id, data) {
   const existing = await getServerById(id);
   if (!existing) return null;
 
+  const rawMeta = await getServerMetadataRaw(id);
   const metadata = normalizeMetadata({
-    ...existing.metadata,
-    hls_base_url: data.hls_base_url ?? existing.metadata?.hls_base_url,
-    public_base_url: data.public_base_url ?? existing.metadata?.public_base_url,
+    ...rawMeta,
+    hls_base_url: data.hls_base_url ?? rawMeta?.hls_base_url,
+    public_base_url: data.public_base_url ?? rawMeta?.public_base_url,
     ...(data.metadata || {}),
   });
 
@@ -271,17 +304,103 @@ export async function updateServer(id, data) {
 }
 
 export async function deleteServer(id) {
-  const running = await query(
-    `SELECT COUNT(*) AS count FROM channels
+  const rowResult = await query('SELECT * FROM servers WHERE id = $1', [id]);
+  const row = rowResult.rows[0];
+  if (!row) throw new Error('السيرفر غير موجود');
+  if (row.hostname === config.serverId) {
+    throw new Error('لا يمكن حذف السيرفر الرئيسي (هذا الجهاز)');
+  }
+
+  const runningResult = await query(
+    `SELECT id FROM channels
      WHERE server_id = $1 AND status IN ('running', 'starting', 'restarting') AND is_active = true`,
     [id]
   );
-  if (parseInt(running.rows[0].count, 10) > 0) {
-    throw new Error('لا يمكن حذف سيرفر عليه قنوات نشطة — أوقف القنوات أولاً');
+
+  if (runningResult.rows.length > 0) {
+    const { enqueueStreamJob } = await import('./queue.service.js');
+    for (let i = 0; i < runningResult.rows.length; i += 1) {
+      await enqueueStreamJob(
+        'stop-channel',
+        runningResult.rows[i].id,
+        { delay: i * 200 },
+        { options: { manual: true } }
+      );
+    }
+    await query(
+      `UPDATE channels SET status = 'stopped' WHERE server_id = $1 AND status IN ('running', 'starting', 'restarting')`,
+      [id]
+    );
   }
 
   await query('UPDATE channels SET server_id = NULL WHERE server_id = $1', [id]);
-  await query('UPDATE servers SET is_active = false WHERE id = $1', [id]);
+  await query('UPDATE servers SET is_active = false, current_streams = 0 WHERE id = $1', [id]);
+
+  return {
+    success: true,
+    message: 'تم حذف السيرفر — لن يظهر في القائمة',
+    stopped_channels: runningResult.rows.length,
+  };
+}
+
+export async function suspendServer(id) {
+  const server = await getServerById(id);
+  if (!server) throw new Error('السيرفر غير موجود');
+  if (!server.is_active) throw new Error('لا يمكن تعليق سيرفر معطّل');
+  if (server.is_suspended) {
+    return { server, stopped: 0, pinned_channels: 0, already: true };
+  }
+
+  await patchServerMetadata(id, {
+    suspended: true,
+    suspended_at: new Date().toISOString(),
+  });
+
+  const [runningResult, pinnedResult] = await Promise.all([
+    query(
+      `SELECT id FROM channels
+       WHERE server_id = $1 AND status IN ('running', 'starting', 'restarting') AND is_active = true`,
+      [id]
+    ),
+    query(
+      `SELECT COUNT(*) AS count FROM channels WHERE server_id = $1 AND is_active = true`,
+      [id]
+    ),
+  ]);
+
+  const { enqueueStreamJob } = await import('./queue.service.js');
+  let stopped = 0;
+  for (let i = 0; i < runningResult.rows.length; i += 1) {
+    await enqueueStreamJob(
+      'stop-channel',
+      runningResult.rows[i].id,
+      { delay: i * 300 },
+      { options: { manual: true } }
+    );
+    stopped += 1;
+  }
+
+  const updated = await getServerById(id);
+  return {
+    server: updated,
+    stopped,
+    pinned_channels: parseInt(pinnedResult.rows[0].count, 10),
+  };
+}
+
+export async function unsuspendServer(id) {
+  const server = await getServerById(id);
+  if (!server) throw new Error('السيرفر غير موجود');
+  if (!server.is_suspended) {
+    return { server, already: true };
+  }
+
+  await patchServerMetadata(id, {
+    suspended: undefined,
+    suspended_at: undefined,
+  });
+
+  return { server: await getServerById(id) };
 }
 
 export async function refreshServerStreamCount(serverId) {
@@ -313,12 +432,25 @@ export async function heartbeatLocalServer(activeCount = null) {
     count = parseInt(result.rows[0].count, 10);
   }
 
-  const fresh = await getServerById(local.id);
+  const rawMeta = await getServerMetadataRaw(local.id);
+  let hostStats = rawMeta?.host_stats || null;
+  try {
+    hostStats = getHostMetricsSnapshot();
+  } catch (err) {
+    log.warn({ err: err.message }, 'Host metrics snapshot failed');
+    hostStats = {
+      collected_at: new Date().toISOString(),
+      error: err.message,
+      cpu: { usage_percent: 0, cores: 0, model: '—', load_1: 0, load_5: 0, load_15: 0 },
+      memory: { usage_percent: 0, total_bytes: 0, used_bytes: 0 },
+    };
+  }
+
   const httpPort = parseInt(process.env.STREAMRELAY_HTTP_PORT || '8080', 10);
   const serverIp = String(process.env.SERVER_IP || config.public?.lanIp || '').trim();
   const metadata = normalizeMetadata({
-    ...fresh?.metadata,
-    host_stats: getHostMetricsSnapshot(),
+    ...rawMeta,
+    host_stats: hostStats,
   });
 
   if (serverIp && serverIp !== '127.0.0.1' && !serverIp.startsWith('172.')) {
@@ -327,8 +459,13 @@ export async function heartbeatLocalServer(activeCount = null) {
   }
 
   await query(
-    `UPDATE servers SET current_streams = $2, last_heartbeat = NOW(), metadata = $3 WHERE id = $1`,
-    [local.id, count, JSON.stringify(metadata)]
+    `UPDATE servers
+     SET current_streams = $2,
+         last_heartbeat = NOW(),
+         metadata = $3,
+         ip_address = COALESCE(NULLIF($4, ''), ip_address)
+     WHERE id = $1`,
+    [local.id, count, JSON.stringify(metadata), serverIp || null]
   );
 
   return getServerById(local.id);
@@ -401,12 +538,15 @@ export async function assignServerForChannel(channelId) {
   );
 
   const streamServers = candidates.rows.map(decorateServer);
-  const onlineServers = streamServers.filter((s) => s.online);
+  const onlineServers = streamServers.filter((s) => s.online && !s.is_suspended);
 
   if (channel.server_id) {
     const pinned = streamServers.find((s) => s.id === channel.server_id);
     if (!pinned || !pinned.is_active) {
       throw new Error('السيرفر المحدد للقناة غير موجود أو معطّل');
+    }
+    if (pinned.is_suspended) {
+      throw new Error(`السيرفر «${pinned.name}» معلّق — أزل التعليق أو غيّر سيرفر القناة`);
     }
     if (!pinned.online) {
       throw new Error(`السيرفر «${pinned.name}» غير متصل — شغّله أو غيّر اختيار القناة`);
@@ -420,7 +560,7 @@ export async function assignServerForChannel(channelId) {
   const pool = onlineServers.filter((s) => s.current_streams < s.max_streams);
   if (pool.length === 0) {
     const local = await getLocalServer();
-    if (local && canRunStreams(local.role) && local.current_streams < local.max_streams) {
+    if (local && canRunStreams(local.role) && !local.is_suspended && local.current_streams < local.max_streams) {
       return local;
     }
     throw new Error('لا يوجد سيرفر بث متاح — أضف سيرفراً أو خفّف الحمل');
@@ -473,8 +613,15 @@ export async function assertChannelAssignedToLocal(channel) {
   const local = await getLocalServer();
   if (!local) throw new Error('Local server not registered');
 
+  if (local.is_suspended) {
+    throw new Error('هذا السيرفر معلّق — أزل التعليق من لوحة السيرفرات');
+  }
+
   if (channel.server_id && channel.server_id !== local.id) {
     const assigned = await getServerById(channel.server_id);
+    if (assigned?.is_suspended) {
+      throw new Error(`السيرفر «${assigned.name}» معلّق — أزل التعليق أو غيّر سيرفر القناة`);
+    }
     if (assigned?.online) {
       throw new Error(`Channel assigned to another server (${assigned.hostname})`);
     }

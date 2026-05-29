@@ -44,4 +44,5 @@ bash scripts/update-from-github.sh
 
 echo ""
 echo "=== تم — لم تُفقد إعداداتك ==="
+echo "• إن وُجدت سيرفرات بعيدة ببيانات SSH، يُحدَّثون تلقائياً بعد اكتمال بناء الرئيسي"
 [ -f "$BACKUP/.env" ] && echo "النسخة الاحتياطية: $BACKUP/.env"

@@ -1,6 +1,6 @@
 FROM node:20-alpine
 
-RUN apk add --no-cache ffmpeg wget
+RUN apk add --no-cache ffmpeg wget coreutils procps
 
 WORKDIR /app
 

@@ -203,11 +203,18 @@ export const getPublicBranding = () => axios.get(`${API_BASE}/branding`);
 export const getBrandingSettings = () => api.get('/settings/branding');
 export const saveBrandingSettings = (data) => api.put('/settings/branding', data);
 
-export const getServers = () => api.get('/servers');
+export const getServers = (includeInactive = false) => api.get('/servers', {
+  params: includeInactive ? { all: 1 } : {},
+});
 export const createServer = (data) => api.post('/servers', data);
 export const provisionServer = (data) => api.post('/servers/provision', data);
 export const updateServer = (id, data) => api.put(`/servers/${id}`, data);
 export const deleteServer = (id) => api.delete(`/servers/${id}`);
+export const suspendServer = (id) => api.post(`/servers/${id}/suspend`);
+export const unsuspendServer = (id) => api.post(`/servers/${id}/unsuspend`);
+export const syncRemoteServers = () => api.post('/servers/sync-remotes');
+export const updateRemoteServer = (id) => api.post(`/servers/${id}/update-remote`);
+export const saveServerSsh = (id, data) => api.put(`/servers/${id}/ssh`, data);
 
 // MikroTik
 export const getMikrotikInfo = () => api.get('/mikrotik/info');

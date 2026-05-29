@@ -34,4 +34,17 @@ if [ -f "${SCRIPT_DIR}/fix-server-ip.sh" ]; then
   bash "${SCRIPT_DIR}/fix-server-ip.sh" --no-restart 2>/dev/null || true
 fi
 
+if [ "${AUTO_UPDATE_REMOTES:-1}" = "1" ]; then
+  echo ""
+  echo "=== تحديث سيرفرات البث البعيدة (SSH) ==="
+  if docker compose exec -T api node src/scripts/sync-remote-workers.js; then
+    echo "تم تحديث السيرفرات البعيدة (إن وُجدت بيانات SSH)"
+  else
+    echo "تحذير: فشل تحديث سيرفر بعيد واحد أو أكثر — راجع لوحة السيرفرات أو:"
+    echo "  docker compose exec -T api node src/scripts/sync-remote-workers.js"
+  fi
+else
+  echo "تخطي تحديث البعيد (AUTO_UPDATE_REMOTES=0)"
+fi
+
 print_streamrelay_urls

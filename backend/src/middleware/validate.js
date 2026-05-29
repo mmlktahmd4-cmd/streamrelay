@@ -90,6 +90,14 @@ export const provisionServerSchema = z.object({
   ssh_port: z.coerce.number().int().min(1).max(65535).default(22),
   hostname: z.string().min(1).max(255).regex(/^[a-zA-Z0-9._-]+$/).optional(),
   max_streams: z.coerce.number().int().min(1).max(1000).default(100),
+  save_ssh_for_updates: z.boolean().optional().default(true),
+});
+
+export const serverSshSchema = z.object({
+  ssh_username: z.string().min(1).max(64),
+  ssh_password: z.string().max(256).optional(),
+  ssh_port: z.coerce.number().int().min(1).max(65535).default(22),
+  auto_remote_update: z.boolean().optional().default(true),
 });
 
 export const uploadSessionSchema = z.object({
