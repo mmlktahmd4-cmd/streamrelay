@@ -23,12 +23,16 @@ chmod +x scripts/*.sh 2>/dev/null || true
 # shellcheck source=lib/network.sh
 source "$INSTALL_DIR/scripts/lib/network.sh" 2>/dev/null || true
 
-echo "=== git pull ==="
-git fetch origin
-if [ -n "$BRANCH" ]; then
-  git checkout "$BRANCH"
+echo "=== git sync (GitHub) ==="
+CURRENT_BRANCH="$(git branch --show-current 2>/dev/null || echo main)"
+SYNC_BRANCH="${BRANCH:-$CURRENT_BRANCH}"
+if declare -F sync_install_repo >/dev/null 2>&1; then
+  sync_install_repo "$INSTALL_DIR" "$SYNC_BRANCH"
+else
+  git fetch origin
+  git reset --hard "origin/${SYNC_BRANCH}"
 fi
-git pull origin "$(git branch --show-current)"
+echo "      $(git -C "$INSTALL_DIR" log -1 --oneline 2>/dev/null || true)"
 
 if [ -f .env ]; then
   set -a

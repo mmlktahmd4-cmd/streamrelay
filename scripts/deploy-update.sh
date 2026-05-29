@@ -36,15 +36,16 @@ fi
 
 if [ "${AUTO_UPDATE_REMOTES:-1}" = "1" ]; then
   echo ""
-  echo "=== تحديث سيرفرات البث البعيدة (SSH) ==="
+  echo "=== تحديث سيرفرات البث البعيدة (SSH + GitHub) ==="
   if docker compose exec -T api node src/scripts/sync-remote-workers.js; then
     echo "تم تحديث السيرفرات البعيدة (إن وُجدت بيانات SSH)"
   else
-    echo "تحذير: فشل تحديث سيرفر بعيد واحد أو أكثر — راجع لوحة السيرفرات أو:"
-    echo "  docker compose exec -T api node src/scripts/sync-remote-workers.js"
+    echo "تحذير: فشل تحديث سيرفر بعيد واحد أو أكثر — من لوحة الإدارة:"
+    echo "  السيرفرات → «تحديث السيرفرات البعيدة»"
+    echo "  أو: docker compose exec -T api node src/scripts/sync-remote-workers.js"
   fi
 else
-  echo "تخطي تحديث البعيد (AUTO_UPDATE_REMOTES=0)"
+  echo "تخطي تحديث البعيد (AUTO_UPDATE_REMOTES=0) — استخدم لوحة الإدارة → تحديث السيرفرات البعيدة"
 fi
 
 print_streamrelay_urls

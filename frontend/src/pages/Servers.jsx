@@ -395,7 +395,15 @@ export default function ServersPage() {
       if (data.skipped) {
         setMessage('التحديث التلقائي للبعيد معطّل (AUTO_UPDATE_REMOTES=0)');
       } else {
-        setMessage(`تم: ${data.updated || 0} نجح، ${data.failed || 0} فشل من ${data.total || 0}`);
+        const commits = (data.results || [])
+          .filter((r) => r.commit)
+          .map((r) => `${r.hostname}: ${r.commit}`)
+          .join(' · ');
+        setMessage(
+          commits
+            ? `تم: ${data.updated || 0} نجح، ${data.failed || 0} فشل — ${commits}`
+            : `تم: ${data.updated || 0} نجح، ${data.failed || 0} فشل من ${data.total || 0}`
+        );
       }
       loadServers();
     } catch (err) {
@@ -460,8 +468,8 @@ export default function ServersPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button type="button" className="btn btn-secondary" disabled={saving} onClick={handleSyncAllRemotes}>
-            <CloudDownload className="w-4 h-4" /> تحديث السيرفرات البعيدة
+          <button type="button" className="btn btn-secondary" disabled={saving} onClick={handleSyncAllRemotes} title="git pull + إعادة بناء worker على كل سيرفر بعيد له SSH">
+            <CloudDownload className="w-4 h-4" /> مزامنة GitHub للسيرفرات البعيدة
           </button>
           <button type="button" className="btn btn-primary" onClick={() => { resetForms(); setMode('provision'); }}>
             <Link2 className="w-4 h-4" /> ربط تلقائي (SSH)
@@ -509,7 +517,8 @@ export default function ServersPage() {
       <div className="card mb-6 bg-blue-50 border border-blue-100 text-sm text-slate-700 leading-relaxed">
         <strong>كيف يعمل؟</strong>
         <ul className="list-disc list-inside mt-2 space-y-1">
-          <li><strong>ربط تلقائي:</strong> أدخل IP + SSH — يُحفظ SSH لتحديث السيرفر البعيد تلقائياً بعد <span className="font-mono">safe-update.sh</span> على الرئيسي.</li>
+          <li><strong>تحديث تلقائي:</strong> بعد <span className="font-mono">safe-update.sh</span> على الرئيسي يُحدَّث البعيد تلقائياً (إن وُجد SSH). أو اضغط «مزامنة GitHub للسيرفرات البعيدة».</li>
+          <li><strong>ربط تلقائي:</strong> أدخل IP + SSH — يُحفظ لتحديث البعيد من GitHub دون دخول يدوي.</li>
           <li><strong>اختيار القناة:</strong> من «إضافة/تعديل قناة» اختر السيرفر أو اترك «تلقائي».</li>
           <li>على السيرفر الرئيسي، فعّل <span className="font-mono">POSTGRES_PUBLISH=0.0.0.0:5432</span> و <span className="font-mono">REDIS_PUBLISH=0.0.0.0:6379</span> في <span className="font-mono">.env</span> ثم أعد التشغيل.</li>
         </ul>

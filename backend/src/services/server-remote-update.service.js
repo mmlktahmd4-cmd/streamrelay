@@ -110,10 +110,13 @@ export async function updateRemoteServer(serverId) {
   }
 
   const finishedAt = new Date().toISOString();
+  const commitMatch = logTail.match(/commit=([^\s]+)/i)
+    || logTail.match(/Git commit:\s*(\S+)/i);
   await serverService.patchServerMetadata(serverId, {
     last_remote_update: finishedAt,
     last_remote_update_status: status,
     last_remote_update_error: errorMessage || undefined,
+    last_remote_update_commit: commitMatch?.[1] || undefined,
     remote_update_log: logTail || undefined,
     remote_update_started_at: startedAt,
   });
@@ -126,6 +129,7 @@ export async function updateRemoteServer(serverId) {
     server_id: serverId,
     hostname: server.hostname,
     status,
+    commit: commitMatch?.[1] || null,
     log: logTail.slice(-2000),
   };
 }
