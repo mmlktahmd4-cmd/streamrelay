@@ -21,7 +21,7 @@ async function main() {
     });
   };
   beat();
-  setInterval(beat, 30000);
+  setInterval(beat, 15_000);
 
   log.info('Worker ready, processing jobs');
 

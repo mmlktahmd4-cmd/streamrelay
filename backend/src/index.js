@@ -175,7 +175,7 @@ async function main() {
     await app.listen({ port: config.port, host: config.host });
     log.info({ port: config.port, role: config.serverRole }, 'StreamRelay API started');
 
-    if (config.serverRole === 'api-only' || config.serverRole === 'full') {
+    if (config.serverRole === 'full') {
       startLocalServerHeartbeat();
     }
   } catch (err) {

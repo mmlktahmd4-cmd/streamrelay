@@ -6,7 +6,7 @@ import { getPublicUrls } from './public-url.service.js';
 
 const log = createChildLogger('servers');
 
-export const HEARTBEAT_ONLINE_MS = 90_000;
+export const HEARTBEAT_ONLINE_MS = 180_000;
 
 export function canRunStreams(role) {
   return role === 'full' || role === 'stream-only';
@@ -41,9 +41,25 @@ function attachLiveStats(server) {
 
 export function isServerOnline(server, now = Date.now()) {
   if (!server?.is_active) return false;
-  if (!server.last_heartbeat) return server.hostname === config.serverId;
-  const ts = new Date(server.last_heartbeat).getTime();
-  return Number.isFinite(ts) && (now - ts) <= HEARTBEAT_ONLINE_MS;
+
+  let meta = server.metadata;
+  if (typeof meta === 'string') {
+    try { meta = JSON.parse(meta); } catch { meta = {}; }
+  }
+  meta = meta && typeof meta === 'object' ? meta : {};
+
+  const collectedAt = meta.host_stats?.collected_at;
+  if (collectedAt) {
+    const ts = new Date(collectedAt).getTime();
+    if (Number.isFinite(ts) && (now - ts) <= HEARTBEAT_ONLINE_MS) return true;
+  }
+
+  if (server.last_heartbeat) {
+    const ts = new Date(server.last_heartbeat).getTime();
+    if (Number.isFinite(ts) && (now - ts) <= HEARTBEAT_ONLINE_MS) return true;
+  }
+
+  return !server.last_heartbeat && server.hostname === config.serverId;
 }
 
 export function getServerLoadPercent(server) {
@@ -131,11 +147,19 @@ export async function ensureLocalServerRecord() {
   const metadata = normalizeMetadata(existing?.metadata);
 
   if (existing) {
+    const roleToSet = (config.serverRole === 'api-only' && canRunStreams(existing.role))
+      ? existing.role
+      : config.serverRole;
+    const maxStreams = Math.max(
+      Number(existing.max_streams) || 0,
+      Number(config.streaming.maxConcurrent) || 0
+    ) || config.streaming.maxConcurrent;
+
     await query(
       `UPDATE servers
        SET role = $2, max_streams = $3, is_active = true
        WHERE id = $1`,
-      [existing.id, config.serverRole, config.streaming.maxConcurrent]
+      [existing.id, roleToSet, maxStreams]
     );
     return getServerById(existing.id);
   }
@@ -162,8 +186,20 @@ export async function listServers({ includeInactive = false } = {}) {
     ? 'SELECT * FROM servers ORDER BY name ASC, created_at ASC'
     : 'SELECT * FROM servers WHERE is_active = true ORDER BY name ASC, created_at ASC';
   const result = await query(sql);
+
+  const countResult = await query(
+    `SELECT server_id, COUNT(*) AS count FROM channels
+     WHERE status IN ('running', 'starting', 'restarting') AND is_active = true
+     GROUP BY server_id`
+  );
+  const countByServer = new Map(
+    countResult.rows.map((r) => [r.server_id, parseInt(r.count, 10)])
+  );
+
   return result.rows.map((row) => {
-    const server = decorateServer(row);
+    const liveCount = countByServer.get(row.id);
+    const enriched = liveCount != null ? { ...row, current_streams: liveCount } : row;
+    const server = decorateServer(enriched);
     if (server.is_local && !server.host_stats) {
       return attachLiveStats(server);
     }
@@ -175,9 +211,29 @@ export async function getClusterSummary() {
   const servers = await listServers();
   const streamServers = servers.filter((s) => s.is_active && canRunStreams(s.role));
   const online = streamServers.filter((s) => s.online && !s.is_suspended);
-  const totalMax = online.reduce((sum, s) => sum + (Number(s.max_streams) || 0), 0);
-  const totalCurrent = online.reduce((sum, s) => sum + (Number(s.current_streams) || 0), 0);
-  const withStats = online.filter((s) => s.host_stats?.cpu);
+
+  const totalMaxRegistered = streamServers.reduce(
+    (sum, s) => sum + (Number(s.max_streams) || 0),
+    0
+  );
+  const totalMaxOnline = online.reduce(
+    (sum, s) => sum + (Number(s.max_streams) || 0),
+    0
+  );
+  const totalCurrentFromServers = streamServers.reduce(
+    (sum, s) => sum + (Number(s.current_streams) || 0),
+    0
+  );
+
+  const channelResult = await query(
+    `SELECT COUNT(*) AS count FROM channels
+     WHERE is_active = true AND status IN ('running', 'starting', 'restarting')`
+  );
+  const totalCurrentDb = parseInt(channelResult.rows[0]?.count || '0', 10);
+
+  const withStats = streamServers
+    .filter((s) => s.host_stats?.cpu != null)
+    .filter((s, i, arr) => arr.findIndex((x) => x.id === s.id) === i);
   const avgCpu = withStats.length > 0
     ? Math.round(withStats.reduce((sum, s) => sum + (s.cpu_percent || 0), 0) / withStats.length)
     : null;
@@ -185,13 +241,19 @@ export async function getClusterSummary() {
     ? Math.max(...withStats.map((s) => s.cpu_percent || 0))
     : null;
 
+  const totalCurrent = Math.max(totalCurrentDb, totalCurrentFromServers);
+  const loadDenominator = totalMaxOnline > 0 ? totalMaxOnline : totalMaxRegistered;
+
   return {
     total_servers: servers.length,
     stream_servers: streamServers.length,
     online_servers: online.length,
-    total_max_streams: totalMax,
+    total_max_streams: totalMaxRegistered,
+    total_max_streams_online: totalMaxOnline,
     total_current_streams: totalCurrent,
-    cluster_load_percent: totalMax > 0 ? Math.round((totalCurrent / totalMax) * 100) : 0,
+    cluster_load_percent: loadDenominator > 0
+      ? Math.round((totalCurrent / loadDenominator) * 100)
+      : 0,
     avg_cpu_percent: avgCpu,
     max_cpu_percent: maxCpu,
     local_server_id: (await getLocalServer())?.id || null,
@@ -431,6 +493,9 @@ export async function heartbeatLocalServer(activeCount = null) {
   const local = await ensureLocalServerRecord();
   if (!local) return null;
 
+  // حاوية API-only لا ترسل heartbeat — يكفي worker البث
+  if (config.serverRole === 'api-only') return local;
+
   let count = activeCount;
   if (count == null) {
     const result = await query(
@@ -487,9 +552,9 @@ export function startLocalServerHeartbeat() {
     });
   };
   tick();
-  const interval = setInterval(tick, 30_000);
+  const interval = setInterval(tick, 15_000);
   interval.unref();
-  log.info('Server stats heartbeat started (every 30s)');
+  log.info('Server stats heartbeat started (every 15s)');
 }
 
 export function getHlsBaseForServer(server) {
@@ -554,10 +619,12 @@ export async function assignServerForChannel(channelId) {
   );
 
   const streamServers = candidates.rows.map(decorateServer);
-  const onlineServers = streamServers.filter((s) => s.online && !s.is_suspended);
+  const eligible = streamServers.filter((s) => s.is_active && !s.is_suspended);
+  const onlineServers = eligible.filter((s) => s.online);
 
   if (channel.server_id) {
-    const pinned = streamServers.find((s) => s.id === channel.server_id);
+    const pinned = eligible.find((s) => s.id === channel.server_id)
+      || streamServers.find((s) => s.id === channel.server_id);
     if (!pinned || !pinned.is_active) {
       throw new Error('السيرفر المحدد للقناة غير موجود أو معطّل');
     }
@@ -565,7 +632,7 @@ export async function assignServerForChannel(channelId) {
       throw new Error(`السيرفر «${pinned.name}» معلّق — أزل التعليق أو غيّر سيرفر القناة`);
     }
     if (!pinned.online) {
-      throw new Error(`السيرفر «${pinned.name}» غير متصل — شغّله أو غيّر اختيار القناة`);
+      log.warn({ hostname: pinned.hostname, channelId }, 'Pinned server stale heartbeat — queueing anyway');
     }
     if (pinned.current_streams >= pinned.max_streams) {
       throw new Error(`السيرفر «${pinned.name}» ممتلئ (${pinned.current_streams}/${pinned.max_streams})`);
@@ -573,7 +640,10 @@ export async function assignServerForChannel(channelId) {
     return pinned;
   }
 
-  const pool = onlineServers.filter((s) => s.current_streams < s.max_streams);
+  let pool = onlineServers.filter((s) => s.current_streams < s.max_streams);
+  if (pool.length === 0) {
+    pool = eligible.filter((s) => s.current_streams < s.max_streams);
+  }
   if (pool.length === 0) {
     const local = await getLocalServer();
     if (local && canRunStreams(local.role) && !local.is_suspended && local.current_streams < local.max_streams) {
