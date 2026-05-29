@@ -249,7 +249,7 @@ export default function Dashboard() {
           icon={Download}
           label="سحب (داخل)"
           value={formatBitrate(bw.total_pull_bps)}
-          sub={bw.total_pull_session_bytes ? formatBytes(bw.total_pull_session_bytes) : 'من المصدر'}
+          sub={bw.total_pull_session_bytes ? formatBytes(bw.total_pull_session_bytes) : 'تقدير من ملفات HLS'}
           color="yellow"
         />
         <StatCard
@@ -318,6 +318,7 @@ export default function Dashboard() {
             </table>
           </div>
           <div className="text-xs text-slate-400 mt-3 pt-3 border-t border-slate-100 space-y-1">
+            <p>«سحب (داخل)» = تقدير من حجم شرائح HLS على هذا السيرفر فقط (قنواته المحلية).</p>
             {(bw.host_rx_bps > 0) && (
               <p>
                 استقبال الشبكة (RX): <strong className="text-slate-600">{formatBitrate(bw.host_rx_bps)}</strong>

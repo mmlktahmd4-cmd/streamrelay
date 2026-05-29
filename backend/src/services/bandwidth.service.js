@@ -75,17 +75,23 @@ async function samplePullBandwidth(channelId, slug) {
 
   try {
     const files = await fs.readdir(dir);
-    for (const file of files) {
-      if (!file.endsWith('.ts')) continue;
+    const tsFiles = new Set(files.filter((f) => f.endsWith('.ts')));
+
+    for (const file of tsFiles) {
       const fp = path.join(dir, file);
       const stat = await fs.stat(fp);
       const old = fileStates[file];
       if (!old) {
         deltaBytes += stat.size;
-      } else if (stat.mtimeMs > old.mtimeMs || stat.size !== old.size) {
-        deltaBytes += stat.size;
+      } else {
+        const grown = stat.size - (old.size || 0);
+        if (grown > 0) deltaBytes += grown;
       }
       fileStates[file] = { size: stat.size, mtimeMs: stat.mtimeMs };
+    }
+
+    for (const file of Object.keys(fileStates)) {
+      if (!tsFiles.has(file)) delete fileStates[file];
     }
   } catch {
     /* channel dir may not exist yet */
@@ -154,6 +160,7 @@ async function sampleHostNetwork() {
       if (parts.length < 10) continue;
       const iface = parts[0].replace(':', '');
       if (iface === 'lo') continue;
+      if (iface.startsWith('docker') || iface.startsWith('br-') || iface.startsWith('veth')) continue;
       rxBytes += parseInt(parts[1], 10) || 0;
       txBytes += parseInt(parts[9], 10) || 0;
     }
@@ -175,6 +182,13 @@ async function sampleHostNetwork() {
 }
 
 async function buildSnapshot(runningChannels) {
+  const { isChannelAssignedToLocalWorker } = await import('./server.service.js');
+  const localChannels = [];
+  for (const ch of runningChannels) {
+    if (await isChannelAssignedToLocalWorker(ch)) localChannels.push(ch);
+  }
+  runningChannels = localChannels;
+
   slugToChannel = new Map(runningChannels.map((ch) => [ch.slug, ch]));
   const activeIds = new Set(runningChannels.map((ch) => ch.id));
   const activeSlugs = new Set(runningChannels.map((ch) => ch.slug));
@@ -254,8 +268,13 @@ function emptyBandwidthStats() {
 
 async function tickMonitor() {
   try {
+    const { isChannelAssignedToLocalWorker } = await import('./server.service.js');
     const running = await channelService.getRunningChannels();
-    await buildSnapshot(running);
+    const localChannels = [];
+    for (const ch of running) {
+      if (await isChannelAssignedToLocalWorker(ch)) localChannels.push(ch);
+    }
+    await buildSnapshot(localChannels);
   } catch (err) {
     log.debug({ err: err.message }, 'Bandwidth monitor tick failed');
   }
@@ -359,6 +378,13 @@ export function handleFfmpegStderr() {
 }
 
 export async function getBandwidthStats(runningChannels = []) {
+  const { isChannelAssignedToLocalWorker } = await import('./server.service.js');
+  const filtered = [];
+  for (const ch of runningChannels) {
+    if (await isChannelAssignedToLocalWorker(ch)) filtered.push(ch);
+  }
+  runningChannels = filtered;
+
   if (latestSnapshot && latestSnapshot._cachedAt && Date.now() - latestSnapshot._cachedAt < 1500) {
     if (runningChannels.length === 0) {
       return { ...emptyBandwidthStats(), host_rx_bps: latestSnapshot.host_rx_bps, host_tx_bps: latestSnapshot.host_tx_bps };
