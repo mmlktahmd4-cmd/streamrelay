@@ -5,9 +5,10 @@ import * as serverRestart from '../services/server-restart.service.js';
 import { getPublicUrls } from '../services/public-url.service.js';
 import { getOnlineViewersCount, getOnlineViewers } from '../services/online-presence.service.js';
 import { getSiteConfig, saveSiteConfig } from '../services/site-config.service.js';
+import { getBranding, saveBranding } from '../services/branding.service.js';
 import { getBandwidthStats } from '../services/bandwidth.service.js';
 import { requireMinRole } from '../middleware/auth.js';
-import { validate, siteConfigSchema } from '../middleware/validate.js';
+import { validate, siteConfigSchema, brandingSettingsSchema } from '../middleware/validate.js';
 import { config } from '../config/index.js';
 import { query } from '../db/pool.js';
 
@@ -21,6 +22,8 @@ export default async function systemRoutes(fastify) {
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
   }));
+
+  fastify.get('/branding', async () => getBranding());
 
   await fastify.register(async function protectedSystemRoutes(protectedRoutes) {
     protectedRoutes.addHook('preHandler', fastify.authenticate);
@@ -118,6 +121,14 @@ export default async function systemRoutes(fastify) {
         return reply.status(400).send({ error: err.message || 'تعذّر حفظ إعدادات الدومين' });
       }
     });
+
+    protectedRoutes.get('/settings/branding', {
+      preHandler: [requireMinRole('admin')],
+    }, async () => getBranding());
+
+    protectedRoutes.put('/settings/branding', {
+      preHandler: [requireMinRole('admin'), validate(brandingSettingsSchema)],
+    }, async (request) => saveBranding(request.body));
 
     // Logs
     protectedRoutes.get('/logs', async (request) => {

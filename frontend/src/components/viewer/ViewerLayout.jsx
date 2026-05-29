@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Outlet, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useViewerBranding } from '../../context/ViewerBrandingContext';
 import { getCategoriesFull } from '../../api/client';
 import ViewerAccountModal from './ViewerAccountModal';
 import { Tv, LogOut, Shield, UserCircle, LayoutGrid } from 'lucide-react';
 
 export default function ViewerLayout() {
   const { user, logout, isOperator } = useAuth();
+  const branding = useViewerBranding();
   const navigate = useNavigate();
   const [accountOpen, setAccountOpen] = useState(false);
   const [categories, setCategories] = useState([]);
@@ -30,8 +32,8 @@ export default function ViewerLayout() {
               <Tv className="w-5 h-5 text-white" />
             </div>
             <div>
-              <p className="font-bold text-white text-base leading-tight">StreamRelay TV</p>
-              <p className="text-[10px] text-teal-400/80 font-medium">بث داخلي آمن</p>
+              <p className="font-bold text-white text-base leading-tight">{branding.app_title}</p>
+              <p className="text-[10px] text-teal-400/80 font-medium">{branding.app_tagline}</p>
             </div>
           </Link>
 

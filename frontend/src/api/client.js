@@ -155,6 +155,9 @@ export const restartServer = () => api.post('/restart', {}, { timeout: 15000 });
 export const getNetworkUrls = () => api.get('/network-urls');
 export const getSiteConfig = () => api.get('/site-config');
 export const saveSiteConfig = (data) => api.put('/site-config', data);
+export const getPublicBranding = () => axios.get(`${API_BASE}/branding`);
+export const getBrandingSettings = () => api.get('/settings/branding');
+export const saveBrandingSettings = (data) => api.put('/settings/branding', data);
 
 // MikroTik
 export const getMikrotikInfo = () => api.get('/mikrotik/info');

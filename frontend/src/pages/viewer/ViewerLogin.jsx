@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useViewerBranding } from '../../context/ViewerBrandingContext';
 import { getAuthErrorMessage } from '../../utils/authErrors';
 import { setAuthPortal } from '../../utils/authStorage';
 import { Tv, Shield } from 'lucide-react';
 
 export default function ViewerLogin() {
   const { login, logout, user, loading: authLoading } = useAuth();
+  const branding = useViewerBranding();
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -50,7 +52,7 @@ export default function ViewerLogin() {
           <div className="viewer-logo w-16 h-16 mx-auto mb-4 rounded-2xl">
             <Tv className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-white">StreamRelay TV</h1>
+          <h1 className="text-2xl font-bold text-white">{branding.app_title}</h1>
           <p className="text-slate-400 text-sm mt-2">ادخل بحسابك للمشاهدة</p>
         </div>
 

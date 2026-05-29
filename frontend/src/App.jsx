@@ -15,9 +15,11 @@ import Player from './pages/Player';
 import Users from './pages/Users';
 import Mikrotik from './pages/Mikrotik';
 import DomainDns from './pages/DomainDns';
+import Settings from './pages/Settings';
 import Categories from './pages/Categories';
 import Logs from './pages/Logs';
 import LoadingSpinner from './components/ui/LoadingSpinner';
+import { ViewerBrandingProvider } from './context/ViewerBrandingContext';
 
 function AdminRoute({ children, minRole }) {
   const { user, loading } = useAuth();
@@ -69,8 +71,8 @@ export default function App() {
   return (
     <Routes>
       {/* بوابة المشاهدة — منفصلة عن الإدارة */}
-      <Route path="/watch/login" element={<GuestViewer><ViewerLogin /></GuestViewer>} />
-      <Route path="/watch" element={<ViewerRoute><ViewerLayout /></ViewerRoute>}>
+      <Route path="/watch/login" element={<ViewerBrandingProvider><GuestViewer><ViewerLogin /></GuestViewer></ViewerBrandingProvider>} />
+      <Route path="/watch" element={<ViewerBrandingProvider><ViewerRoute><ViewerLayout /></ViewerRoute></ViewerBrandingProvider>}>
         <Route index element={<ViewerHome />} />
         <Route path="live/:id" element={<ViewerWatch />} />
       </Route>
@@ -87,6 +89,7 @@ export default function App() {
         <Route path="player/:id" element={<Player />} />
         <Route path="users" element={<AdminRoute minRole="admin"><Users /></AdminRoute>} />
         <Route path="domain" element={<AdminRoute minRole="admin"><DomainDns /></AdminRoute>} />
+        <Route path="settings" element={<AdminRoute minRole="admin"><Settings /></AdminRoute>} />
         <Route path="mikrotik" element={<AdminRoute minRole="admin"><Mikrotik /></AdminRoute>} />
         <Route path="logs" element={<Logs />} />
       </Route>

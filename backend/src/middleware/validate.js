@@ -61,6 +61,13 @@ export const siteConfigSchema = z.object({
   use_https: z.boolean().default(false),
 });
 
+export const brandingSettingsSchema = z.object({
+  app_title: z.string().max(80).default('StreamRelay TV'),
+  app_tagline: z.string().max(120).default('بث داخلي آمن'),
+  live_watch_notice: z.string().max(200).default('أنت تشاهد عبر البث الداخلي على شبكة السيرفر'),
+  vod_watch_notice: z.string().max(200).default('تشغيل فيلم من السيرفر المحلي'),
+});
+
 export const createChannelSchema = z.object({
   name: z.string().min(1).max(255),
   slug: z.string().min(1).max(255).optional(),
