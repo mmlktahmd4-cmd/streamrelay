@@ -635,6 +635,9 @@ export async function assertChannelAssignedToLocal(channel) {
 
   if (channel.server_id && channel.server_id !== local.id) {
     const assigned = await getServerById(channel.server_id);
+    if (assigned?.is_suspended) {
+      throw new Error(`السيرفر «${assigned.name}» معلّق — أزل التعليق أو غيّر سيرفر القناة`);
+    }
     throw new Error(
       `القناة مربوطة بـ «${assigned?.name || 'سيرفر آخر'}» (${assigned?.hostname || '—'})`
     );
