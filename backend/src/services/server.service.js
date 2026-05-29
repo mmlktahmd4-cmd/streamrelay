@@ -577,20 +577,30 @@ export function getHlsBaseForServer(server) {
 }
 
 export async function resolveHlsBaseForChannel(channel) {
-  const { hlsBase } = getPublicUrls();
-  if (!channel) return hlsBase;
+  if (!channel) return getPublicUrls().hlsBase;
 
-  // المشاهدة دائماً عبر الرئيسي — البروكسي يوجّه لسيرفر البث الفعلي
-  if (channel.slug) {
-    const expected = `${hlsBase}/${channel.slug}/index.m3u8`;
-    if (channel.output_url !== expected) {
-      await query(
-        'UPDATE channels SET output_url = $1 WHERE id = $2',
-        [expected, channel.id]
-      ).catch(() => {});
+  if (channel.server_id) {
+    const server = await getServerById(channel.server_id);
+    if (server) {
+      const base = getHlsBaseForServer(server);
+      if (channel.slug) {
+        const expected = `${base}/${channel.slug}/index.m3u8`;
+        if (channel.output_url !== expected) {
+          await query(
+            'UPDATE channels SET output_url = $1 WHERE id = $2',
+            [expected, channel.id]
+          ).catch(() => {});
+        }
+      }
+      return base;
     }
   }
 
+  const { hlsBase } = getPublicUrls();
+  if (channel.output_url) {
+    const match = String(channel.output_url).match(/^(.+)\/[^/]+\/index\.m3u8/i);
+    if (match) return match[1];
+  }
   return hlsBase;
 }
 
@@ -710,7 +720,7 @@ export async function assertChannelAssignedToLocal(channel) {
 }
 
 export async function bindChannelToServer(channelId, server, slug) {
-  const { hlsBase } = getPublicUrls();
+  const hlsBase = getHlsBaseForServer(server);
   await query(
     `UPDATE channels SET server_id = $2, output_url = $3 WHERE id = $1`,
     [channelId, server.id, `${hlsBase}/${slug}/index.m3u8`]
