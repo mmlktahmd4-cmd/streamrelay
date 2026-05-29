@@ -24,7 +24,10 @@ export default async function serverRoutes(fastify) {
       reply.status(201);
       return result;
     } catch (err) {
-      return reply.status(400).send({ error: err.message });
+      return reply.status(400).send({
+        error: err.message,
+        log: err.log || undefined,
+      });
     }
   });
 
