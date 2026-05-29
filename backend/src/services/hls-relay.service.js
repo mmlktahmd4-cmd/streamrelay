@@ -1,4 +1,5 @@
 import fs from 'fs/promises';
+import { createReadStream } from 'fs';
 import path from 'path';
 import { config } from '../config/index.js';
 import { createChildLogger } from '../utils/logger.js';
@@ -48,11 +49,14 @@ export async function handleHlsRelay(request, reply) {
   if (localPath) {
     reply.header('Access-Control-Allow-Origin', '*');
     if (file.endsWith('.m3u8')) {
+      reply.header('Content-Type', 'application/vnd.apple.mpegurl');
       reply.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     } else if (file.endsWith('.ts')) {
+      reply.header('Content-Type', 'video/mp2t');
       reply.header('Cache-Control', 'max-age=5');
     }
-    return reply.sendFile(path.basename(localPath), path.dirname(localPath));
+    // قراءة عبر stream — لا نعتمد على reply.sendFile (غير مُفعّل: decorateReply=false)
+    return reply.send(createReadStream(localPath));
   }
 
   const upstream = await upstreamUrl(slug, file);
