@@ -649,9 +649,18 @@ export async function assignServerForChannel(channelId) {
     return pinned;
   }
 
+  // فضّل السيرفرات المتصلة، ثم تراجع لأي سيرفر مؤهل (heartbeat قد يكون متأخراً)
   let pool = onlineServers.filter((s) => s.current_streams < s.max_streams);
   if (pool.length === 0) {
-    throw new Error('لا يوجد سيرفر بث متصل حالياً — تحقق من heartbeat أو أعد تشغيل worker');
+    pool = eligible.filter((s) => s.current_streams < s.max_streams);
+  }
+  if (pool.length === 0) {
+    const local = await getLocalServer();
+    if (local && canRunStreams(local.role) && !local.is_suspended
+        && local.current_streams < local.max_streams) {
+      return local;
+    }
+    throw new Error('لا يوجد سيرفر بث متاح — أضف سيرفراً أو خفّف الحمل');
   }
 
   pool.sort((a, b) => {
