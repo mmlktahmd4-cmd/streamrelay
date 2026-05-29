@@ -173,6 +173,7 @@ function buildFFmpegArgs(channel) {
 
   if (channel.source_type !== 'udp') {
     args.push('-fflags', '+genpts+discardcorrupt');
+    args.push('-probesize', '10M', '-analyzeduration', '10M');
   }
 
 
@@ -203,6 +204,7 @@ function buildFFmpegArgs(channel) {
 
   if (channel.transcode_enabled) {
 
+    args.push('-map', '0:v:0?', '-map', '0:a:0?');
     args.push('-c:v', profile.video_codec || 'libx264');
 
     args.push('-c:a', profile.audio_codec || 'aac');
@@ -217,8 +219,17 @@ function buildFFmpegArgs(channel) {
 
   } else if (channel.output_format === 'hls') {
 
-    // متصفحات HLS تحتاج AAC — copy كامل يمرّر MP2/AC3 بدون صورة/صوت
-    args.push('-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k', '-ac', '2');
+    args.push('-map', '0:v:0?', '-map', '0:a:0?');
+    if (process.env.HLS_COPY_MODE === '1') {
+      args.push('-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k', '-ac', '2');
+    } else {
+      args.push(
+        '-c:v', 'libx264', '-preset', 'veryfast', '-profile:v', 'main', '-level', '4.0',
+        '-b:v', '2500k', '-maxrate', '2800k', '-bufsize', '5600k',
+        '-c:a', 'aac', '-b:a', '128k', '-ac', '2', '-ar', '44100'
+      );
+    }
+    args.push('-max_muxing_queue_size', '1024');
 
   } else {
 
