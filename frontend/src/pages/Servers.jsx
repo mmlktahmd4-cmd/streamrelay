@@ -228,7 +228,8 @@ export default function ServersPage() {
             </label>
             <label className="block">
               <span className="label">Hostname (SERVER_ID) — اختياري</span>
-              <input className="input mt-1 font-mono" dir="ltr" value={provision.hostname} onChange={(e) => setProvision({ ...provision, hostname: e.target.value })} placeholder="node-2 (تلقائي إن تُرك فارغاً)" />
+              <input className="input mt-1 font-mono" dir="ltr" value={provision.hostname} onChange={(e) => setProvision({ ...provision, hostname: e.target.value })} placeholder="اتركه فارغاً = تلقائي (node-2, node-3...)" />
+              <p className="text-xs text-slate-500 mt-1">إذا سبق ربط node-2 وفشل، اترك الحقل فارغاً أو احذف السيرفر المعطّل من الجدول أدناه</p>
             </label>
             <label className="block">
               <span className="label">حد القنوات</span>
@@ -316,11 +317,12 @@ export default function ServersPage() {
               </tr>
             </thead>
             <tbody>
-              {servers.filter((s) => s.is_active).map((server) => (
-                <tr key={server.id} className="border-b border-slate-50 last:border-0">
+              {servers.map((server) => (
+                <tr key={server.id} className={`border-b border-slate-50 last:border-0 ${!server.is_active ? 'opacity-50 bg-slate-50' : ''}`}>
                   <td className="py-3 font-medium text-slate-800">
                     {server.name}
                     {server.is_local && <span className="mr-2 text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">هذا الجهاز</span>}
+                    {!server.is_active && <span className="mr-2 text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded">معطّل</span>}
                     {server.metadata?.provision_status === 'success' && (
                       <span className="mr-2 text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">مربوط</span>
                     )}
@@ -335,16 +337,18 @@ export default function ServersPage() {
                     </div>
                   </td>
                   <td className="py-3">
-                    <span className={`inline-flex items-center gap-1 text-xs font-semibold ${server.online ? 'text-emerald-600' : 'text-slate-400'}`}>
-                      <span className={`w-2 h-2 rounded-full ${server.online ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
-                      {server.online ? 'متصل' : 'غير متصل'}
+                    <span className={`inline-flex items-center gap-1 text-xs font-semibold ${!server.is_active ? 'text-slate-400' : server.online ? 'text-emerald-600' : 'text-slate-400'}`}>
+                      <span className={`w-2 h-2 rounded-full ${!server.is_active ? 'bg-slate-300' : server.online ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
+                      {!server.is_active ? 'معطّل' : server.online ? 'متصل' : 'غير متصل'}
                     </span>
                   </td>
                   <td className="py-3">
                     <div className="flex gap-1">
-                      <button type="button" className="btn-icon" onClick={() => handleEdit(server)} title="تعديل"><Pencil className="w-4 h-4" /></button>
+                      {server.is_active && (
+                        <button type="button" className="btn-icon" onClick={() => handleEdit(server)} title="تعديل"><Pencil className="w-4 h-4" /></button>
+                      )}
                       {!server.is_local && (
-                        <button type="button" className="btn-icon text-red-500" onClick={() => handleDelete(server.id)} title="حذف"><Trash2 className="w-4 h-4" /></button>
+                        <button type="button" className="btn-icon text-red-500" onClick={() => handleDelete(server.id)} title={server.is_active ? 'تعطيل' : 'إزالة من القائمة'}><Trash2 className="w-4 h-4" /></button>
                       )}
                     </div>
                   </td>

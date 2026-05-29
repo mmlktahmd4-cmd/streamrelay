@@ -114,13 +114,58 @@ export async function getClusterSummary() {
   };
 }
 
+export async function suggestNextHostname() {
+  const servers = await listServers();
+  const used = new Set(servers.map((s) => s.hostname));
+  let n = 2;
+  while (used.has(`node-${n}`)) n += 1;
+  return `node-${n}`;
+}
+
 export async function createServer(data) {
   const hostname = String(data.hostname || '').trim();
   if (!hostname) throw new Error('hostname مطلوب — يجب أن يطابق SERVER_ID على جهاز البث');
 
-  const duplicate = await query('SELECT id FROM servers WHERE hostname = $1', [hostname]);
+  const duplicate = await query('SELECT * FROM servers WHERE hostname = $1', [hostname]);
   if (duplicate.rows.length > 0) {
-    throw new Error('يوجد سيرفر بنفس hostname');
+    const existing = duplicate.rows[0];
+    if (!existing.is_active) {
+      const prevMeta = typeof existing.metadata === 'string'
+        ? (() => { try { return JSON.parse(existing.metadata); } catch { return {}; } })()
+        : (existing.metadata || {});
+      const metadata = normalizeMetadata({
+        ...prevMeta,
+        hls_base_url: data.hls_base_url,
+        public_base_url: data.public_base_url,
+        ...(data.metadata || {}),
+      });
+      const result = await query(
+        `UPDATE servers
+         SET name = $2,
+             ip_address = $3,
+             role = $4,
+             max_streams = $5,
+             is_active = true,
+             metadata = $6,
+             last_heartbeat = NULL,
+             current_streams = 0
+         WHERE id = $1
+         RETURNING *`,
+        [
+          existing.id,
+          String(data.name || hostname).trim(),
+          data.ip_address || null,
+          data.role || 'stream-only',
+          Number(data.max_streams) || 100,
+          JSON.stringify(metadata),
+        ]
+      );
+      return decorateServer(result.rows[0]);
+    }
+    const next = await suggestNextHostname();
+    throw new Error(
+      `يوجد سيرفر نشط بنفس hostname (${hostname}) — استخدم ${next} أو احذف السيرفر القديم من القائمة`
+    );
   }
 
   const metadata = normalizeMetadata({
@@ -154,6 +199,7 @@ export async function updateServer(id, data) {
     ...existing.metadata,
     hls_base_url: data.hls_base_url ?? existing.metadata?.hls_base_url,
     public_base_url: data.public_base_url ?? existing.metadata?.public_base_url,
+    ...(data.metadata || {}),
   });
 
   const result = await query(

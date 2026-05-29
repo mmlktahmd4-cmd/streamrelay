@@ -141,16 +141,6 @@ async function execSshProvision({ host, port, username, password, script, env })
   }
 }
 
-export async function suggestNextHostname() {
-  const servers = await serverService.listServers();
-  let max = 1;
-  for (const server of servers) {
-    const match = /^node-(\d+)$/i.exec(server.hostname || '');
-    if (match) max = Math.max(max, parseInt(match[1], 10));
-  }
-  return `node-${max + 1}`;
-}
-
 export async function provisionRemoteServer({
   name,
   ip_address,
@@ -166,10 +156,13 @@ export async function provisionRemoteServer({
     throw new Error('IP واسم المستخدم وكلمة مرور SSH مطلوبة');
   }
 
-  const serverId = String(hostname || '').trim() || await suggestNextHostname();
+  const serverId = String(hostname || '').trim() || await serverService.suggestNextHostname();
   const existing = await serverService.getServerByHostname(serverId);
   if (existing?.is_active) {
-    throw new Error(`يوجد سيرفر بنفس hostname: ${serverId}`);
+    const next = await serverService.suggestNextHostname();
+    throw new Error(
+      `يوجد سيرفر نشط بنفس hostname (${serverId}) — اترك الحقل فارغاً لاستخدام ${next} أو احذف السيرفر القديم`
+    );
   }
 
   const script = await loadProvisionScript();
