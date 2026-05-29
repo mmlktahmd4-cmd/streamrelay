@@ -86,7 +86,6 @@ export async function createChannel(data) {
   }
 
   const { hlsBase } = getPublicUrls();
-  const outputUrl = `${hlsBase}/${slug}/index.m3u8`;
 
   const result = await query(
     `INSERT INTO channels (
@@ -98,7 +97,7 @@ export async function createChannel(data) {
     [
       data.name, slug, data.description || null, data.logo_url || null,
       data.category_id || null, data.source_type || 'hls', data.source_url,
-      data.backup_source_url || null, data.output_format || 'hls', outputUrl,
+      data.backup_source_url || null, data.output_format || 'hls', null,
       data.transcode_enabled || false,
       JSON.stringify(data.transcode_profile || { video_codec: 'copy', audio_codec: 'copy' }),
       data.auto_restart !== false, data.epg_id || null,
@@ -106,7 +105,10 @@ export async function createChannel(data) {
       data.server_id || null,
     ]
   );
-  return result.rows[0];
+  const row = result.rows[0];
+  const outputUrl = `${hlsBase}/${row.id}/index.m3u8`;
+  await query('UPDATE channels SET output_url = $2 WHERE id = $1', [row.id, outputUrl]);
+  return { ...row, output_url: outputUrl };
 }
 
 export async function updateChannel(id, data) {

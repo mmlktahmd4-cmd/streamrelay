@@ -725,7 +725,7 @@ export async function bindChannelToServer(channelId, server, slug) {
   const hlsBase = getHlsBaseForServer(server);
   await query(
     `UPDATE channels SET server_id = $2, output_url = $3 WHERE id = $1`,
-    [channelId, server.id, `${hlsBase}/${slug}/index.m3u8`]
+    [channelId, server.id, `${hlsBase}/${channelId}/index.m3u8`]
   );
   await refreshServerStreamCount(server.id);
 }

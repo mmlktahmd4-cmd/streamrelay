@@ -65,7 +65,7 @@ export default async function channelRoutes(fastify) {
     const lines = ['#EXTM3U', '#EXTINF:-1,StreamRelay — Local Relay'];
     for (const ch of channels) {
       const hlsBase = await resolvePanelPlaybackBase(ch);
-      const signed = generateSignedUrl(ch.slug, ttl, hlsBase);
+      const signed = generateSignedUrl(ch.id, ttl, hlsBase);
       lines.push(`#EXTINF:-1,${ch.name}`);
       lines.push(signed.url);
     }
@@ -128,9 +128,9 @@ export default async function channelRoutes(fastify) {
     const ttl = parseInt(request.query.ttl, 10) || undefined;
     const directBase = await resolveHlsBaseForChannel(channel);
     const playBase = await resolvePanelPlaybackBase(channel);
-    const signed = generateSignedUrl(channel.slug, ttl, playBase);
+    const signed = generateSignedUrl(channel.id, ttl, playBase);
     const directSigned = playBase !== directBase
-      ? generateSignedUrl(channel.slug, ttl, directBase)
+      ? generateSignedUrl(channel.id, ttl, playBase)
       : signed;
     const assignedServer = channel.server_id ? await getServerById(channel.server_id) : null;
 

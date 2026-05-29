@@ -270,13 +270,13 @@ export async function syncMediaOutputUrls() {
   // قنوات السيرفر الرئيسي فقط — لا نكتب فوق روابط السيرفرات البعيدة
   if (local?.id) {
     await query(
-      `UPDATE channels SET output_url = $1 || slug || '/index.m3u8'
+      `UPDATE channels SET output_url = $1 || id::text || '/index.m3u8'
        WHERE is_active = true AND (server_id IS NULL OR server_id = $2)`,
       [`${hlsBase}/`, local.id]
     );
   } else {
     await query(
-      `UPDATE channels SET output_url = $1 || slug || '/index.m3u8'
+      `UPDATE channels SET output_url = $1 || id::text || '/index.m3u8'
        WHERE is_active = true AND server_id IS NULL`,
       [`${hlsBase}/`]
     );

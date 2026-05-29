@@ -2,10 +2,10 @@ import crypto from 'crypto';
 import { config } from '../config/index.js';
 import { getPublicUrls } from '../services/public-url.service.js';
 
-export function generateSignedUrl(channelSlug, expiresIn = null, hlsBaseOverride = null) {
+export function generateSignedUrl(channelKey, expiresIn = null, hlsBaseOverride = null) {
   const ttl = expiresIn || config.urlSigning.ttl;
   const expires = Math.floor(Date.now() / 1000) + ttl;
-  const payload = `${channelSlug}:${expires}`;
+  const payload = `${channelKey}:${expires}`;
   const signature = crypto
     .createHmac('sha256', config.urlSigning.secret)
     .update(payload)
@@ -13,7 +13,7 @@ export function generateSignedUrl(channelSlug, expiresIn = null, hlsBaseOverride
 
   const hlsBase = String(hlsBaseOverride || getPublicUrls().hlsBase).replace(/\/$/, '');
   const query = `expires=${expires}&sig=${signature}`;
-  const internalUrl = `${hlsBase}/${channelSlug}/index.m3u8?${query}`;
+  const internalUrl = `${hlsBase}/${channelKey}/index.m3u8?${query}`;
 
   return {
     url: internalUrl,
@@ -22,13 +22,13 @@ export function generateSignedUrl(channelSlug, expiresIn = null, hlsBaseOverride
   };
 }
 
-export function verifySignedUrl(channelSlug, expires, signature) {
+export function verifySignedUrl(channelKey, expires, signature) {
   if (!expires || !signature) return false;
 
   const now = Math.floor(Date.now() / 1000);
   if (parseInt(expires, 10) < now) return false;
 
-  const payload = `${channelSlug}:${expires}`;
+  const payload = `${channelKey}:${expires}`;
   const expected = crypto
     .createHmac('sha256', config.urlSigning.secret)
     .update(payload)

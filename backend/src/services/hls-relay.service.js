@@ -3,19 +3,36 @@ import { createReadStream } from 'fs';
 import path from 'path';
 import { config } from '../config/index.js';
 import { createChildLogger } from '../utils/logger.js';
+import { verifySignedUrl } from '../utils/crypto.js';
 import * as channelService from './channel.service.js';
 import { getServerById, getHlsBaseForServer } from './server.service.js';
 
 const log = createChildLogger('hls-relay');
 const hlsRoot = path.resolve(config.streaming.hlsDir);
 
+const UUID_RE = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+
 function parseHlsRequest(url) {
   const match = String(url || '').match(/^\/api\/hls\/([^/?]+)\/(.+?)(?:\?|$)/);
   if (!match) return null;
   return {
-    slug: decodeURIComponent(match[1]),
+    streamKey: decodeURIComponent(match[1]),
     file: match[2].replace(/\.\./g, ''),
   };
+}
+
+async function resolveChannelSlug(streamKey) {
+  if (!streamKey) return null;
+  if (UUID_RE.test(streamKey)) {
+    const channel = await channelService.getChannelById(streamKey);
+    return channel?.slug || null;
+  }
+  return streamKey;
+}
+
+function signatureKey(streamKey, channel) {
+  if (UUID_RE.test(streamKey)) return streamKey;
+  return channel?.id || streamKey;
 }
 
 async function localFileExists(slug, file) {
@@ -39,11 +56,28 @@ async function upstreamUrl(slug, file) {
 
 export async function handleHlsRelay(request, reply) {
   const parsed = parseHlsRequest(request.url);
-  if (!parsed?.slug || !parsed?.file) {
+  if (!parsed?.streamKey || !parsed?.file) {
     return reply.status(404).send({ error: 'Not found' });
   }
 
-  const { slug, file } = parsed;
+  const { streamKey, file } = parsed;
+  const channel = UUID_RE.test(streamKey)
+    ? await channelService.getChannelById(streamKey)
+    : await channelService.getChannelBySlug(streamKey);
+  const slug = channel?.slug || (UUID_RE.test(streamKey) ? null : streamKey);
+
+  if (!slug) {
+    return reply.status(404).send({ error: 'Not found' });
+  }
+
+  const { expires, sig } = request.query || {};
+  if (expires && sig) {
+    const key = signatureKey(streamKey, channel);
+    if (!verifySignedUrl(key, expires, sig)) {
+      return reply.status(403).send({ error: 'Invalid or expired URL' });
+    }
+  }
+
   const localPath = await localFileExists(slug, file);
 
   if (localPath) {
@@ -55,7 +89,6 @@ export async function handleHlsRelay(request, reply) {
       reply.header('Content-Type', 'video/mp2t');
       reply.header('Cache-Control', 'max-age=5');
     }
-    // قراءة عبر stream — لا نعتمد على reply.sendFile (غير مُفعّل: decorateReply=false)
     return reply.send(createReadStream(localPath));
   }
 
