@@ -11,9 +11,9 @@ const log = createChildLogger('bandwidth');
 
 const PREFIX = 'sr:bandwidth:';
 const HOST_PREFIX = `${PREFIX}host:`;
-const POLL_MS = 3000;
+const POLL_MS = 1000;
 const BPS_WINDOW_SEC = 3;
-const TTL_SEC = 10;
+const TTL_SEC = 20;
 
 let redis = null;
 const trackers = new Map();
@@ -462,20 +462,24 @@ export function handleFfmpegStderr() {
   /* HLS dir sampling is the source of truth for pull rate */
 }
 
-export async function getBandwidthStats(runningChannels = []) {
+export async function getBandwidthStats(runningChannels = null) {
   const cluster = mergeClusterSnapshots(await fetchClusterSnapshots());
   if (cluster && cluster.channel_count > 0) {
     return cluster;
   }
 
   const { isChannelAssignedToLocalWorker } = await import('./server.service.js');
+  if (!runningChannels) {
+    runningChannels = await channelService.getRunningChannels();
+  }
+
   const filtered = [];
   for (const ch of runningChannels) {
     if (await isChannelAssignedToLocalWorker(ch)) filtered.push(ch);
   }
   runningChannels = filtered;
 
-  if (latestSnapshot && latestSnapshot._cachedAt && Date.now() - latestSnapshot._cachedAt < 1500) {
+  if (latestSnapshot && latestSnapshot._cachedAt && Date.now() - latestSnapshot._cachedAt < 2500) {
     if (runningChannels.length === 0) {
       return { ...emptyBandwidthStats(), host_rx_bps: latestSnapshot.host_rx_bps, host_tx_bps: latestSnapshot.host_tx_bps };
     }

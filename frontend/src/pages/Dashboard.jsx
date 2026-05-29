@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { getDashboard, restartServer, getHealth, refreshNetwork } from '../api/client';
+import { getDashboard, getBandwidth, restartServer, getHealth, refreshNetwork } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import {
@@ -104,9 +104,23 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchDashboard();
-    const interval = setInterval(fetchDashboard, 10000);
+    const interval = setInterval(fetchDashboard, 15000);
     return () => clearInterval(interval);
   }, [fetchDashboard]);
+
+  // إحصائيات السرعة — endpoint خفيف (Redis) كل 2 ثانية — لا يثقل اللوحة
+  useEffect(() => {
+    let active = true;
+    const fetchBw = async () => {
+      try {
+        const { data: bw } = await getBandwidth();
+        if (active) setBandwidth(bw);
+      } catch { /* ignore */ }
+    };
+    fetchBw();
+    const interval = setInterval(fetchBw, 2000);
+    return () => { active = false; clearInterval(interval); };
+  }, []);
 
   const waitForServer = async (maxMs = 90000) => {
     const start = Date.now();
@@ -251,7 +265,7 @@ export default function Dashboard() {
             </h2>
             <span className="text-xs text-emerald-600 flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              تحديث كل 10 ثوان
+              تحديث كل 2 ثانية
             </span>
           </div>
           <div className="overflow-x-auto">

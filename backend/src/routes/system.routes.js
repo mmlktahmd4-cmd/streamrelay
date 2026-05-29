@@ -50,11 +50,8 @@ export default async function systemRoutes(fastify) {
       };
     });
 
-    // Bandwidth stats (تحديث سريع — كل ثانية)
-    protectedRoutes.get('/bandwidth', async () => {
-      const runningChannels = await channelService.getRunningChannels();
-      return getBandwidthStats(runningChannels);
-    });
+    // Bandwidth stats — خفيف (يقرأ من Redis على worker) — للتحديث السريع في اللوحة
+    protectedRoutes.get('/bandwidth', async () => getBandwidthStats());
 
     // Dashboard stats
     protectedRoutes.get('/dashboard', async () => {
