@@ -124,7 +124,9 @@ export default function ServersPage() {
       resetForms();
       loadServers();
     } catch (err) {
-      setMessage(err.response?.data?.error || 'فشل الربط التلقائي');
+      const msg = err.response?.data?.error || 'فشل الربط التلقائي';
+      const logText = err.response?.data?.log;
+      setMessage(logText ? `${msg}\n\n${logText}` : msg);
     }
     setSaving(false);
   };
@@ -237,7 +239,11 @@ export default function ServersPage() {
             <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'جاري الربط...' : 'ربط وتثبيت'}</button>
             <button type="button" className="btn btn-secondary" onClick={resetForms}>إلغاء</button>
           </div>
-          {message && <p className={`text-sm ${message.includes('فشل') || message.includes('تعذّر') ? 'text-red-600' : 'text-emerald-700'}`}>{message}</p>}
+          {message && (
+            <p className={`text-sm whitespace-pre-wrap ${message.includes('فشل') || message.includes('ERROR') || message.includes('FAIL') ? 'text-red-600' : 'text-emerald-700'}`}>
+              {message}
+            </p>
+          )}
           {provisionLog && (
             <pre className="text-xs bg-slate-900 text-slate-100 p-3 rounded-lg overflow-x-auto max-h-48">{provisionLog}</pre>
           )}

@@ -18,7 +18,11 @@ source "${SCRIPT_DIR}/common-install.sh"
 echo "=== بناء الواجهة ==="
 build_frontend
 
+echo "=== بناء API و Worker (حزم جديدة مثل ssh2) ==="
+docker compose build api worker
+
 echo "=== إعادة تشغيل الحاويات ==="
+docker compose up -d postgres redis
 docker compose up -d --force-recreate api worker frontend nginx
 
 echo "=== انتظار API ==="
