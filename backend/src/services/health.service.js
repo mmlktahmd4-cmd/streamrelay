@@ -31,6 +31,7 @@ export async function checkChannelHealth(channel) {
   return result;
 }
 export async function runHealthChecks() {
+  const { isChannelAssignedToLocalWorker } = await import('./server.service.js');
   const [runningChannels, errorChannels, stoppedChannels] = await Promise.all([
     channelService.getRunningChannels(),
     channelService.getErrorChannelsWithAutoRestart(),
@@ -41,6 +42,10 @@ export async function runHealthChecks() {
   const handled = new Set();
 
   for (const channel of runningChannels) {
+    if (!(await isChannelAssignedToLocalWorker(channel))) {
+      continue;
+    }
+
     handled.add(channel.id);
 
     // لا تفحص القنوات أثناء التشغيل/إعادة التشغيل — يمنع إعادة تشغيل وهمية
@@ -49,6 +54,11 @@ export async function runHealthChecks() {
     }
 
     const inMemory = activeMap.get(channel.id);
+    // FFmpeg شغّال محلياً — لا تعيد التشغيل بسبب تأخر ملف HLS
+    if (inMemory?.alive) {
+      continue;
+    }
+
     const health = await checkChannelHealth(channel);
     results.push(health);
 
@@ -79,6 +89,7 @@ export async function runHealthChecks() {
   }
 
   for (const channel of errorChannels) {
+    if (!(await isChannelAssignedToLocalWorker(channel))) continue;
     if (handled.has(channel.id) || activeMap.has(channel.id)) continue;
 
     log.info({ channelId: channel.id, slug: channel.slug }, 'Recovering stalled error channel');
@@ -93,6 +104,7 @@ export async function runHealthChecks() {
   }
 
   for (const channel of stoppedChannels) {
+    if (!(await isChannelAssignedToLocalWorker(channel))) continue;
     if (handled.has(channel.id) || activeMap.has(channel.id)) continue;
     if (wasManuallyStopped(channel.id)) continue;
 

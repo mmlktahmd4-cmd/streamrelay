@@ -117,6 +117,15 @@ export async function getLocalServer() {
   return getServerByHostname(config.serverId);
 }
 
+/** هل هذه القناة مربوطة بتشغيل FFmpeg على هذا السيرفر (worker الحالي)؟ */
+export async function isChannelAssignedToLocalWorker(channel) {
+  if (!channel) return false;
+  const local = await getLocalServer();
+  if (!local) return true;
+  if (!channel.server_id) return true;
+  return channel.server_id === local.id;
+}
+
 export async function ensureLocalServerRecord() {
   const existing = await getServerByHostname(config.serverId);
   const metadata = normalizeMetadata(existing?.metadata);
