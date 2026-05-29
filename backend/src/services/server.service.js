@@ -288,10 +288,17 @@ export async function heartbeatLocalServer(activeCount = null) {
   }
 
   const fresh = await getServerById(local.id);
+  const httpPort = parseInt(process.env.STREAMRELAY_HTTP_PORT || '8080', 10);
+  const serverIp = String(process.env.SERVER_IP || config.public?.lanIp || '').trim();
   const metadata = normalizeMetadata({
     ...fresh?.metadata,
     host_stats: getHostMetricsSnapshot(),
   });
+
+  if (serverIp && serverIp !== '127.0.0.1' && !serverIp.startsWith('172.')) {
+    metadata.hls_base_url = `http://${serverIp}:${httpPort}/api/hls`;
+    metadata.public_base_url = `http://${serverIp}:${httpPort}`;
+  }
 
   await query(
     `UPDATE servers SET current_streams = $2, last_heartbeat = NOW(), metadata = $3 WHERE id = $1`,
@@ -302,21 +309,43 @@ export async function heartbeatLocalServer(activeCount = null) {
 }
 
 export function getHlsBaseForServer(server) {
-  if (server?.metadata?.hls_base_url) return server.metadata.hls_base_url;
+  const httpPort = parseInt(process.env.STREAMRELAY_HTTP_PORT || String(getPublicUrls().webPort || 8080), 10);
+  const ip = server?.ip_address ? String(server.ip_address).trim() : '';
+  const fromIp = ip ? `http://${ip}:${httpPort}/api/hls` : null;
+
+  const configured = server?.metadata?.hls_base_url
+    ? String(server.metadata.hls_base_url).trim().replace(/\/$/, '')
+    : null;
+
+  if (fromIp && configured) {
+    try {
+      const configuredHost = new URL(configured).hostname;
+      const ipHost = ip.split('/')[0];
+      if (configuredHost !== ipHost) {
+        return fromIp;
+      }
+    } catch {
+      return fromIp;
+    }
+  }
+
+  if (configured) return configured;
+  if (fromIp) return fromIp;
   return getPublicUrls().hlsBase;
 }
 
 export async function resolveHlsBaseForChannel(channel) {
   if (!channel) return getPublicUrls().hlsBase;
 
-  if (channel.server_id) {
-    const server = await getServerById(channel.server_id);
-    if (server) return getHlsBaseForServer(server);
-  }
-
+  // output_url يُحدَّث عند التشغيل من السيرفر الفعلي — الأدق
   if (channel.output_url) {
     const match = String(channel.output_url).match(/^(.+)\/[^/]+\/index\.m3u8/i);
     if (match) return match[1];
+  }
+
+  if (channel.server_id) {
+    const server = await getServerById(channel.server_id);
+    if (server) return getHlsBaseForServer(server);
   }
 
   return getPublicUrls().hlsBase;

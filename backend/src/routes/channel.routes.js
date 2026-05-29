@@ -136,9 +136,10 @@ export default async function channelRoutes(fastify) {
       relay: true,
       stream_server: assignedServer?.name || null,
       stream_server_hostname: assignedServer?.hostname || null,
-      note: assignedServer?.metadata?.hls_base_url
-        ? 'البث من سيرفر البث المخصص — المشاهدة عبر IP ذلك السيرفر'
+      note: assignedServer
+        ? `البث من ${assignedServer.name} (${assignedServer.hostname}) — الرابط يجب أن يطابق IP السيرفر: ${assignedServer.ip_address || 'راجع إعدادات السيرفر'}`
         : 'Local relay URL — viewers watch from your server, not the external source',
+      hls_base: hlsBase,
     };
   });
 

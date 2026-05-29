@@ -5,6 +5,7 @@ import { Copy, Check, Link2, Loader2 } from 'lucide-react';
 
 export default function RelayUrlCopy({ channelId, status, autoLoad = true, compact = false }) {
   const [url, setUrl] = useState('');
+  const [streamServer, setStreamServer] = useState('');
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState('');
@@ -16,6 +17,7 @@ export default function RelayUrlCopy({ channelId, status, autoLoad = true, compa
     try {
       const { data } = await getPlaybackUrl(channelId);
       if (data?.url) setUrl(data.url);
+      setStreamServer(data?.stream_server_hostname || data?.stream_server || '');
       else setError('لم يُرجَع رابط');
     } catch (err) {
       setError(err.response?.data?.error || 'تعذّر جلب الرابط');
@@ -100,7 +102,7 @@ export default function RelayUrlCopy({ channelId, status, autoLoad = true, compa
             {error} — إعادة
           </button>
         ) : (
-          <>
+            <>
             <code
               dir="ltr"
               className="relay-url-text"
@@ -130,6 +132,9 @@ export default function RelayUrlCopy({ channelId, status, autoLoad = true, compa
       </div>
       {error && url && (
         <p className="text-[10px] text-amber-700">{error}</p>
+      )}
+      {streamServer && (
+        <p className="text-[10px] text-slate-500">سيرفر البث: <span className="font-mono font-semibold">{streamServer}</span></p>
       )}
       {copied && (
         <p className="text-[10px] text-emerald-600">تم نسخ الرابط</p>
