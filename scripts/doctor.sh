@@ -10,6 +10,8 @@ PG_USER="$(grep -E '^POSTGRES_USER=' .env 2>/dev/null | cut -d= -f2- || echo str
 PG_DB="$(grep -E '^POSTGRES_DB=' .env 2>/dev/null | cut -d= -f2- || echo streamrelay)"
 PG_USER="${PG_USER:-streamrelay}"
 PG_DB="${PG_DB:-streamrelay}"
+HTTP_PORT="$(grep -E '^STREAMRELAY_HTTP_PORT=' .env 2>/dev/null | cut -d= -f2- || echo 80)"
+HTTP_PORT="${HTTP_PORT:-80}"
 
 line() { printf '\n========== %s ==========\n' "$1"; }
 
@@ -57,10 +59,10 @@ line "10) فحص HLS عبر nginx محلياً"
 SLUG="$(psql_q "SELECT slug FROM channels WHERE status='running' AND is_active=true LIMIT 1;" | sed -n '3p' | tr -d ' ')"
 if [ -n "${SLUG:-}" ]; then
   echo "أول قناة شغّالة: $SLUG"
-  curl -s -o /dev/null -w "  /api/hls عبر nginx → HTTP %{http_code}\n" \
-    "http://127.0.0.1:${STREAMRELAY_HTTP_PORT:-80}/api/hls/${SLUG}/index.m3u8" 2>&1 || true
-  echo "  ملفات على القرص:"
-  ls -la "/var/www/hls/${SLUG}" 2>&1 | head -6 || docker compose exec -T worker ls -la "/var/www/hls/${SLUG}" 2>&1 | head -6
+  curl -s -o /dev/null -w "  /api/hls عبر nginx (منفذ ${HTTP_PORT}) → HTTP %{http_code}\n" \
+    "http://127.0.0.1:${HTTP_PORT}/api/hls/${SLUG}/index.m3u8" 2>&1 || true
+  echo "  محتوى index.m3u8 الحالي + تاريخ آخر مقطع (داخل الحاوية):"
+  docker compose exec -T worker sh -c "cat '/var/www/hls/${SLUG}/index.m3u8'; echo '---'; ls -t '/var/www/hls/${SLUG}'/*.ts 2>/dev/null | head -1 | xargs -r stat -c '%y %n'" 2>&1 | head -15
 else
   echo "لا توجد قناة بحالة running."
 fi

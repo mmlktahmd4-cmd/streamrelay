@@ -66,7 +66,16 @@ export function getQueue() {
     };
     if (config.redis.password) redisOpts.password = config.redis.password;
 
-    streamQueue = new Bull('streamrelay-jobs', { redis: redisOpts });
+    streamQueue = new Bull('streamrelay-jobs', {
+      redis: redisOpts,
+      // إقلاع 40+ قناة دفعة واحدة يتجاوز القفل الافتراضي (30s) → "Missing lock"
+      settings: {
+        lockDuration: 120000,
+        lockRenewTime: 30000,
+        stalledInterval: 60000,
+        maxStalledCount: 3,
+      },
+    });
 
     streamQueue.on('error', (err) => log.error({ err }, 'Queue error'));
     streamQueue.on('failed', (job, err) => {
