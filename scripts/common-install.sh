@@ -23,8 +23,14 @@ build_frontend() {
   ensure_node
   echo "      npm install + build (frontend)..."
   cd frontend
-  npm install --prefer-offline
-  npm run build
+  # vite وأدوات البناء في devDependencies — يجب تثبيتها حتى لو كان NODE_ENV=production في البيئة
+  NODE_ENV=development npm install --include=dev --no-audit --no-fund --prefer-offline
+  if [ ! -x node_modules/.bin/vite ]; then
+    echo "      vite غير موجود — تثبيت نظيف..."
+    rm -rf node_modules package-lock.json 2>/dev/null || true
+    NODE_ENV=development npm install --include=dev --no-audit --no-fund
+  fi
+  NODE_ENV=production npm run build
   cd ..
 }
 
