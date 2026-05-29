@@ -215,6 +215,11 @@ function buildFFmpegArgs(channel) {
 
     }
 
+  } else if (channel.output_format === 'hls') {
+
+    // متصفحات HLS تحتاج AAC — copy كامل يمرّر MP2/AC3 بدون صورة/صوت
+    args.push('-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k', '-ac', '2');
+
   } else {
 
     args.push('-c', 'copy');
