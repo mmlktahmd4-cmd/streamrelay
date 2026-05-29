@@ -488,7 +488,7 @@ export async function listRunningChannelsForPlaylist({ publicOnly = false } = {}
   if (publicOnly) conditions.push('is_public = true');
 
   const result = await query(
-    `SELECT name, slug FROM channels
+    `SELECT name, slug, server_id, output_url FROM channels
      WHERE ${conditions.join(' AND ')}
      ORDER BY sort_order, name`
   );

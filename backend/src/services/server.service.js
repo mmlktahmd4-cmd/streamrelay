@@ -306,6 +306,22 @@ export function getHlsBaseForServer(server) {
   return getPublicUrls().hlsBase;
 }
 
+export async function resolveHlsBaseForChannel(channel) {
+  if (!channel) return getPublicUrls().hlsBase;
+
+  if (channel.server_id) {
+    const server = await getServerById(channel.server_id);
+    if (server) return getHlsBaseForServer(server);
+  }
+
+  if (channel.output_url) {
+    const match = String(channel.output_url).match(/^(.+)\/[^/]+\/index\.m3u8/i);
+    if (match) return match[1];
+  }
+
+  return getPublicUrls().hlsBase;
+}
+
 export async function assignServerForChannel(channelId) {
   const channelResult = await query('SELECT id, server_id FROM channels WHERE id = $1', [channelId]);
   const channel = channelResult.rows[0];

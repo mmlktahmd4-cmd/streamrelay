@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { config } from '../config/index.js';
 import { getPublicUrls } from '../services/public-url.service.js';
 
-export function generateSignedUrl(channelSlug, expiresIn = null) {
+export function generateSignedUrl(channelSlug, expiresIn = null, hlsBaseOverride = null) {
   const ttl = expiresIn || config.urlSigning.ttl;
   const expires = Math.floor(Date.now() / 1000) + ttl;
   const payload = `${channelSlug}:${expires}`;
@@ -11,7 +11,7 @@ export function generateSignedUrl(channelSlug, expiresIn = null) {
     .update(payload)
     .digest('hex');
 
-  const { hlsBase } = getPublicUrls();
+  const hlsBase = String(hlsBaseOverride || getPublicUrls().hlsBase).replace(/\/$/, '');
   const pathSlug = encodeURIComponent(channelSlug);
   const query = `expires=${expires}&sig=${signature}`;
   const internalUrl = `${hlsBase}/${pathSlug}/index.m3u8?${query}`;

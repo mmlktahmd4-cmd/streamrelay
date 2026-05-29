@@ -2,6 +2,7 @@ import path from 'path';
 import { query } from '../db/pool.js';
 import { config } from '../config/index.js';
 import { createChildLogger } from '../utils/logger.js';
+import { getServerByHostname } from './server.service.js';
 import {
   detectPhysicalLanIp,
   ipInSubnet,
@@ -264,11 +265,22 @@ export function isOriginAllowed(origin) {
 
 export async function syncMediaOutputUrls() {
   const { hlsBase, baseUrl } = getPublicUrls();
+  const local = await getServerByHostname(config.serverId);
 
-  await query(
-    `UPDATE channels SET output_url = $1 || slug || '/index.m3u8' WHERE is_active = true`,
-    [`${hlsBase}/`]
-  );
+  // قنوات السيرفر الرئيسي فقط — لا نكتب فوق روابط السيرفرات البعيدة
+  if (local?.id) {
+    await query(
+      `UPDATE channels SET output_url = $1 || slug || '/index.m3u8'
+       WHERE is_active = true AND (server_id IS NULL OR server_id = $2)`,
+      [`${hlsBase}/`, local.id]
+    );
+  } else {
+    await query(
+      `UPDATE channels SET output_url = $1 || slug || '/index.m3u8'
+       WHERE is_active = true AND server_id IS NULL`,
+      [`${hlsBase}/`]
+    );
+  }
 
   try {
     const movies = await query(`SELECT id, slug, file_path FROM movies WHERE is_active = true`);
