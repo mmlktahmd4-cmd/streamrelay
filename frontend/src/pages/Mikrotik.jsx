@@ -95,9 +95,9 @@ export default function Mikrotik() {
       <div className="card mb-6">
         <h2 className="font-bold text-slate-800 mb-3">كيف يشتغل؟</h2>
         <p className="text-sm text-slate-600 leading-relaxed">
-          جهاز البث (الكمبيوتر) لازم يكون عليه <strong>IP ثابت</strong> — مثل <span className="font-mono">30.30.30.1</span>.
-          ثبّته من إعدادات الشبكة في Windows، ثم اكتب نفس الرقم هنا.
-          العملاء على نفس شبكة الميكروtik (مثل <span className="font-mono">30.30.30.x</span>) يفتحون رابط المشاهدة.
+          جهاز البث لازم يكون عليه <strong>IP ثابت</strong> يطابق هذا الرقم — ثبّته من صفحة
+          <strong> «IP السيرفر» </strong> في اللوحة، أو احجزه في الميكروتك (DHCP Static Lease).
+          العملاء على نفس شبكة الميكروتك يفتحون رابط المشاهدة، والسكربت أدناه يفتح لهم الوصول لجهاز البث.
         </p>
       </div>
 
@@ -192,7 +192,7 @@ export default function Mikrotik() {
           ))}
           <li className="flex gap-2">
             <span className="text-blue-500">•</span>
-            <span>ثبّت IP على Windows: Settings → Network → Ethernet → Edit IP → Manual</span>
+            <span>ثبّت IP جهاز البث من صفحة «IP السيرفر» في اللوحة (يدعم ثابت / DHCP).</span>
           </li>
         </ul>
       </div>

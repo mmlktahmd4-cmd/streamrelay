@@ -120,29 +120,36 @@ export async function saveMikrotikConfig(data) {
 }
 
 function buildMainScript(cfg) {
-  const ports = [...new Set([cfg.api_port, cfg.web_port])].join(',');
+  const ports = [...new Set([cfg.web_port, cfg.api_port].filter(Boolean))].join(',');
   const subnet = cfg.client_subnet || subnetFromServerIp(cfg.server_ip);
 
   return [
-    `# StreamRelay - فتح الوصول لجهاز البث`,
-    `# جهاز البث (IP ثابت): ${cfg.server_ip}`,
-    `# شبكة العملاء: ${subnet}`,
-    `# انسخ كل السطور والصقها في Terminal الميكروتik ثم Enter`,
+    `# ═══════════════════════════════════════════`,
+    `# StreamRelay — إعداد الميكروتك`,
+    `# جهاز البث: ${cfg.server_ip}   |   شبكة العملاء: ${subnet}`,
+    `# انسخ كل السطور والصقها في Terminal الميكروتك ثم Enter`,
+    `# ═══════════════════════════════════════════`,
     '',
+    '# 1) السماح بوصول العملاء لجهاز البث (Firewall)',
     '/ip firewall address-list',
     `add list=${ADDRESS_LIST} address=${subnet} comment="${COMMENT_PREFIX}"`,
-    '',
     '/ip firewall filter',
     `add chain=forward action=accept protocol=tcp src-address-list=${ADDRESS_LIST} dst-address=${cfg.server_ip} dst-port=${ports} comment="${COMMENT_PREFIX}"`,
     `add chain=input action=accept protocol=tcp src-address-list=${ADDRESS_LIST} dst-address=${cfg.server_ip} dst-port=${ports} comment="${COMMENT_PREFIX}"`,
+    '',
+    '# 2) (اختياري) حجز IP ثابت لجهاز البث عبر DHCP — يضمن أن يأخذ السيرفر نفس الـ IP دائماً',
+    '#    أزل # من السطرين، واستبدل MAC بعنوان MAC لكرت السيرفر (تجده في صفحة «IP السيرفر»)',
+    '# /ip dhcp-server lease',
+    `# add address=${cfg.server_ip} mac-address=AA:BB:CC:DD:EE:FF comment="${COMMENT_PREFIX}"`,
   ].join('\n');
 }
 
 function buildRemoveScript() {
   return [
-    `# حذف إعداد StreamRelay من الميكروتik`,
+    `# حذف إعداد StreamRelay من الميكروتك`,
     `/ip firewall filter remove [find comment~"${COMMENT_PREFIX}"]`,
     `/ip firewall address-list remove [find list=${ADDRESS_LIST}]`,
+    `/ip dhcp-server lease remove [find comment~"${COMMENT_PREFIX}"]`,
   ].join('\n');
 }
 
@@ -164,22 +171,24 @@ export async function generateScripts() {
     },
     guide: {
       steps: [
-        'على جهاز البث (Windows): Network → IP ثابت — مثلاً 30.30.30.1',
-        'في الأسفل اكتب نفس IP جهاز البث ثم اضغط حفظ.',
-        'اضغط «نسخ السكربت».',
-        'Winbox → New Terminal → الصق السكربت → Enter.',
-        'أعطِ العملاء رابط المشاهدة (نفس IP جهاز البث).',
+        'في الميكروتك → IP > Addresses: أضف عنوان البوابة على شبكة العملاء (مثال 192.168.5.9/24) على البرidج أو المنفذ المخصّص.',
+        'IP > DHCP Server: اضغط Setup وشغّل DHCP على نفس الشبكة ليأخذ العملاء IP تلقائياً.',
+        cfg.server_ip
+          ? `ثبّت IP جهاز البث على ${cfg.server_ip}: إمّا من صفحة «IP السيرفر» في اللوحة (IP ثابت)، أو احجزه في IP > DHCP Server > Leases (Make Static).`
+          : 'ثبّت IP جهاز البث: من صفحة «IP السيرفر» (ثابت) أو احجزه في DHCP Leases (Make Static).',
+        '(اختياري) لمنفذ مخصّص للسيرفر فقط: Bridge > Ports — احذف المنفذ (مثل ether3) من البرidج، ثم ضع عليه عنوان البوابة و DHCP.',
+        'اكتب نفس IP جهاز البث في الأعلى هنا واضغط حفظ، ثم «نسخ السكربت».',
+        'Winbox → New Terminal → الصق السكربت → Enter (يفتح الجدار الناري).',
+        cfg.server_ip ? `أعطِ العملاء رابط المشاهدة: ${viewerUrl}` : 'أعطِ العملاء رابط المشاهدة بعد حفظ الـ IP.',
       ],
       notes: [
-        cfg.server_ip
-          ? `IP جهاز البث: ${cfg.server_ip}`
-          : 'لم يُحدّد IP جهاز البث بعد',
-        cfg.client_subnet
-          ? `شبكة العملاء (تلقائي): ${cfg.client_subnet} — كل الأجهزة على هذه الشبكة`
-          : '',
-        cfg.server_ip
-          ? `رابط العملاء: ${viewerUrl}`
-          : '',
+        'مهم: IP جهاز البث في الميكروتك يجب أن يطابق المثبّت في اللوحة تماماً — وإلا لن يصل البث للعملاء.',
+        'للإعداد البسيط (السيرفر والعملاء على نفس الشبكة): لا تحذف أي منفذ من البرidج — فقط احجز IP السيرفر وافتح الجدار الناري.',
+        'احذف منفذاً من البرidج فقط إذا أردت شبكة منفصلة للسيرفر — عندها سكربت forward يسمح بالعبور بين الشبكتين تلقائياً.',
+        'لا تترك السيرفر يأخذ IP عشوائياً من DHCP — استخدم IP ثابت أو حجز (Static Lease) ليبقى مطابقاً للوحة.',
+        cfg.server_ip ? `IP جهاز البث الحالي: ${cfg.server_ip}` : 'لم يُحدّد IP جهاز البث بعد',
+        cfg.client_subnet ? `شبكة العملاء (تلقائي): ${cfg.client_subnet} — كل الأجهزة على هذه الشبكة` : '',
+        cfg.server_ip ? `رابط العملاء: ${viewerUrl}` : '',
       ].filter(Boolean),
     },
   };
