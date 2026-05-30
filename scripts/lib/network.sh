@@ -68,22 +68,73 @@ ip_to_subnet() {
   fi
 }
 
-# IP مثبّت: .env → .streamrelay-network → اكتشاف تلقائي
+read_env_value() {
+  local key="$1"
+  local install_dir="${2:-.}"
+  grep "^${key}=" "${install_dir}/.env" 2>/dev/null | cut -d= -f2- | head -1 || true
+}
+
+read_public_base_hostname() {
+  local install_dir="${1:-.}"
+  local url host
+  url="$(read_env_value PUBLIC_BASE_URL "$install_dir")"
+  [ -n "$url" ] || return 0
+  url="${url#http://}"
+  url="${url#https://}"
+  host="${url%%/*}"
+  host="${host%%:*}"
+  echo "$host"
+}
+
+ip_on_local_host() {
+  local ip="${1:-}"
+  [ -n "$ip" ] || return 1
+  if command -v ip &>/dev/null; then
+    ip -4 addr show 2>/dev/null | grep -qw "inet ${ip}/"
+    return
+  fi
+  hostname -I 2>/dev/null | grep -qw "$ip"
+}
+
+is_private_ip() {
+  local ip="${1:-}"
+  case "$ip" in
+    192.168.*|10.*) return 0 ;;
+    172.1[6-9].*|172.2[0-9].*|172.3[0-1].*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+subnet_for_ip() {
+  local ip="${1:-}"
+  if is_private_ip "$ip"; then
+    ip_to_subnet "$ip"
+  fi
+}
+
+# IP: .env (إن كان على الجهاز) → PUBLIC_BASE_URL → .streamrelay-network → اكتشاف
 resolve_server_ip() {
   local install_dir="${1:-.}"
-  local existing pinned
+  local existing pinned public_host
 
-  if [ -f "${install_dir}/.env" ]; then
-    existing="$(grep '^SERVER_IP=' "${install_dir}/.env" 2>/dev/null | cut -d= -f2- || true)"
-    if [ -n "$existing" ] && [ "$existing" != "127.0.0.1" ]; then
-      echo "$existing"
-      return
-    fi
+  existing="$(read_env_value SERVER_IP "$install_dir")"
+  if [ -n "$existing" ] && [ "$existing" != "127.0.0.1" ] && ip_on_local_host "$existing"; then
+    echo "$existing"
+    return
+  fi
+
+  public_host="$(read_public_base_hostname "$install_dir")"
+  if [ -n "$public_host" ] \
+    && [ "$public_host" != "127.0.0.1" ] \
+    && [ "$public_host" != "localhost" ] \
+    && [[ "$public_host" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "$public_host"
+    return
   fi
 
   if [ -f "${install_dir}/.streamrelay-network" ]; then
     pinned="$(grep '^SERVER_IP=' "${install_dir}/.streamrelay-network" 2>/dev/null | cut -d= -f2- || true)"
-    if [ -n "$pinned" ] && [ "$pinned" != "127.0.0.1" ]; then
+    if [ -n "$pinned" ] && [ "$pinned" != "127.0.0.1" ] && ip_on_local_host "$pinned"; then
       echo "$pinned"
       return
     fi
@@ -123,12 +174,12 @@ sync_env_public_urls() {
   local ip="$2"
   local port="${3:-$(read_http_port "$install_dir")}"
   local base_url
+  local env_file="${install_dir}/.env"
   base_url="$(public_base_url "$ip" "$port")"
 
   set_env_key() {
     local key="$1"
     local val="$2"
-    local env_file="${install_dir}/.env"
     if grep -q "^${key}=" "$env_file" 2>/dev/null; then
       sed -i "s|^${key}=.*|${key}=${val}|" "$env_file"
     else
@@ -142,5 +193,14 @@ sync_env_public_urls() {
   set_env_key HLS_BASE_URL "${base_url}/api/hls"
   set_env_key RTMP_INGEST_URL "rtmp://${ip}:1935/live"
   set_env_key ALLOWED_ORIGINS "$(allowed_origins_for "$base_url")"
+
+  local subnet
+  subnet="$(subnet_for_ip "$ip")"
+  if [ -n "$subnet" ]; then
+    set_env_key SERVER_LAN_SUBNET "$subnet"
+  elif grep -q '^SERVER_LAN_SUBNET=' "$env_file" 2>/dev/null; then
+    sed -i '/^SERVER_LAN_SUBNET=/d' "$env_file"
+  fi
+
   echo "$base_url"
 }

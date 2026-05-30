@@ -21,6 +21,11 @@ build_frontend
 echo "=== بناء API و Worker (حزم جديدة مثل ssh2) ==="
 docker compose build api worker
 
+if [ -f "${SCRIPT_DIR}/fix-server-ip.sh" ]; then
+  echo "=== مزامنة IP الشبكة ==="
+  bash "${SCRIPT_DIR}/fix-server-ip.sh" --no-restart || true
+fi
+
 echo "=== إعادة تشغيل الحاويات ==="
 docker compose up -d postgres redis
 docker compose up -d --force-recreate api worker frontend nginx
@@ -28,10 +33,6 @@ docker compose up -d --force-recreate api worker frontend nginx
 echo "=== انتظار API ==="
 if ! wait_for_api 30 2; then
   echo "تحذير: تحقق من السجل: docker compose logs api --tail 50"
-fi
-
-if [ -f "${SCRIPT_DIR}/fix-server-ip.sh" ]; then
-  bash "${SCRIPT_DIR}/fix-server-ip.sh" --no-restart 2>/dev/null || true
 fi
 
 if [ "${AUTO_UPDATE_REMOTES:-1}" = "1" ]; then

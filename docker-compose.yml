@@ -51,10 +51,6 @@ services:
       POSTGRES_HOST: postgres
       REDIS_HOST: redis
       SERVER_ROLE: api-only
-      SERVER_IP: ${SERVER_IP:-192.168.5.102}
-      SERVER_LAN_SUBNET: ${SERVER_LAN_SUBNET:-192.168.5.0/24}
-      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://192.168.5.102}
-      STREAMRELAY_HTTP_PORT: ${STREAMRELAY_HTTP_PORT:-80}
     volumes:
       - ./backend/src:/app/src:ro
       - ./scripts:/opt/streamrelay-scripts:ro
@@ -90,10 +86,6 @@ services:
       REDIS_HOST: redis
       SERVER_ROLE: full
       SERVER_ID: ${SERVER_ID:-node-1}
-      SERVER_IP: ${SERVER_IP:-192.168.5.102}
-      SERVER_LAN_SUBNET: ${SERVER_LAN_SUBNET:-192.168.5.0/24}
-      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://192.168.5.102}
-      STREAMRELAY_HTTP_PORT: ${STREAMRELAY_HTTP_PORT:-80}
     volumes:
       - ./backend/src:/app/src:ro
       - hls_data:/var/www/hls

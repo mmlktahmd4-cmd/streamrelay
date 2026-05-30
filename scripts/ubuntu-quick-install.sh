@@ -45,7 +45,7 @@ if [ -d "$INSTALL_DIR/.git" ] && [ "${STREAMRELAY_REPO_SYNCED:-}" != "1" ]; then
   exec bash "$INSTALL_DIR/scripts/ubuntu-quick-install.sh" "$@"
 fi
 
-INSTALL_SCRIPT_VERSION="2026.05.29-42"
+INSTALL_SCRIPT_VERSION="2026.05.30-43"
 chmod +x "${SCRIPT_DIR}"/*.sh 2>/dev/null || true
 
 load_network_lib() {
@@ -267,16 +267,13 @@ ADMIN_SYNC_PASSWORD=true
 EOF
   echo "      تم إنشاء .env جديد"
 else
-  echo "      .env موجود — الحفاظ على SERVER_IP وتحديث الروابط"
-  EXISTING_IP="$(grep '^SERVER_IP=' .env 2>/dev/null | cut -d= -f2- || true)"
-  if [ -n "$EXISTING_IP" ] && [ "$EXISTING_IP" != "127.0.0.1" ]; then
-    SERVER_IP="$EXISTING_IP"
-    SERVER_LAN_SUBNET="$(ip_to_subnet "$SERVER_IP")"
+  echo "      .env موجود — تحديث IP إن تغيّر على الشبكة"
+  OLD_IP="$(grep '^SERVER_IP=' .env 2>/dev/null | cut -d= -f2- || true)"
+  SERVER_IP="$(resolve_server_ip "$INSTALL_DIR")"
+  if [ -n "$OLD_IP" ] && [ "$OLD_IP" != "$SERVER_IP" ]; then
+    echo "      IP قديم: ${OLD_IP} → ${SERVER_IP}"
   fi
   BASE_URL="$(sync_env_public_urls "$INSTALL_DIR" "$SERVER_IP" "$HTTP_PORT")"
-  grep -q '^SERVER_LAN_SUBNET=' .env \
-    && sed -i "s|^SERVER_LAN_SUBNET=.*|SERVER_LAN_SUBNET=${SERVER_LAN_SUBNET}|" .env \
-    || echo "SERVER_LAN_SUBNET=${SERVER_LAN_SUBNET}" >> .env
   ADMIN_PASS="$(grep '^ADMIN_PASSWORD=' .env | cut -d= -f2- || echo 'admin123')"
 fi
 

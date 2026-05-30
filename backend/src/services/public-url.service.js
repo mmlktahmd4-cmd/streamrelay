@@ -56,10 +56,16 @@ function getHomeSubnet(mikrotik) {
   });
 }
 
-function acceptPinnedIp(ip, homeSubnet) {
+function acceptConfiguredIp(ip) {
   const value = String(ip || '').trim();
   if (!value) return null;
   if (isDockerBridgeIp(value)) return null;
+  return value;
+}
+
+function acceptPinnedIp(ip, homeSubnet) {
+  const value = acceptConfiguredIp(ip);
+  if (!value) return null;
   if (homeSubnet && !ipInSubnet(value, homeSubnet)) return null;
   return value;
 }
@@ -83,11 +89,19 @@ function readEnvServerIp() {
 function resolveServerIp(mikrotik) {
   const homeSubnet = getHomeSubnet(mikrotik);
   const publicBase = parseEnvPublicBase();
+  const envServerIp = process.env.SERVER_IP?.trim();
+  const publicHostname = publicBase?.hostname;
 
-  const envIp = acceptPinnedIp(process.env.SERVER_IP, homeSubnet);
+  // PUBLIC_BASE_URL يختلف عن SERVER_IP — المستخدم حدّث الرابط يدوياً
+  if (publicHostname && envServerIp && publicHostname !== envServerIp) {
+    const preferred = acceptConfiguredIp(publicHostname);
+    if (preferred) return { ip: preferred, source: 'public_base_url', homeSubnet };
+  }
+
+  const envIp = acceptConfiguredIp(envServerIp);
   if (envIp) return { ip: envIp, source: 'env', homeSubnet };
 
-  const publicIp = acceptPinnedIp(publicBase?.hostname, homeSubnet);
+  const publicIp = acceptConfiguredIp(publicHostname);
   if (publicIp) return { ip: publicIp, source: 'public_base_url', homeSubnet };
 
   const mikrotikIp = acceptPinnedIp(mikrotik.server_ip, homeSubnet);
@@ -95,7 +109,7 @@ function resolveServerIp(mikrotik) {
 
   // داخل Docker لا يوجد IP LAN حقيقي — لا نستخدم 172.18.x أبداً
   if (isRunningInContainer()) {
-    const forced = acceptPinnedIp(readEnvServerIp(), homeSubnet);
+    const forced = acceptConfiguredIp(readEnvServerIp());
     if (forced) return { ip: forced, source: 'env', homeSubnet };
 
     log.error('SERVER_IP or PUBLIC_BASE_URL must be set — Docker cannot auto-detect LAN IP');
