@@ -123,6 +123,7 @@ export const config = {
     maxRestartAttempts: parseInt(process.env.MAX_RESTART_ATTEMPTS || '0', 10),
     restartCooldown: parseInt(process.env.RESTART_COOLDOWN || '5', 10) * 1000,
     startupRecoveryDelayMs: parseInt(process.env.STARTUP_RECOVERY_DELAY_SEC || '5', 10) * 1000,
+    recoveryStaggerMs: parseInt(process.env.STREAM_RECOVERY_STAGGER_MS || '1000', 10),
   },
 
   public: {

@@ -54,7 +54,8 @@ export async function recoverStreamsOnStartup() {
     );
 
     try {
-      await scheduleAutoStart(channel.id, { delay: queued * 400 });
+      const staggerMs = config.streaming.recoveryStaggerMs;
+      await scheduleAutoStart(channel.id, { delay: queued * staggerMs });
       queued += 1;
     } catch (err) {
       log.warn({ channelId: channel.id, err: err.message }, 'Failed to queue startup start');
