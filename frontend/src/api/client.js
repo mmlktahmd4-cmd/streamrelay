@@ -215,6 +215,8 @@ export const getHealth = () => api.get('/health');
 export const refreshNetwork = () => api.post('/refresh-network');
 export const restartServer = () => api.post('/restart', {}, { timeout: 15000 });
 export const getNetworkUrls = () => api.get('/network-urls');
+export const getServerIpConfig = () => api.get('/server-ip');
+export const applyServerIp = (data) => api.put('/server-ip', data);
 export const getSiteConfig = () => api.get('/site-config');
 export const saveSiteConfig = (data) => api.put('/site-config', data);
 export const getPublicBranding = () => axios.get(`${API_BASE}/branding`);

@@ -86,11 +86,14 @@ function readEnvServerIp() {
   }
 }
 
-function resolveServerIp(mikrotik) {
+function resolveServerIp(mikrotik, serverNetwork = {}) {
   const homeSubnet = getHomeSubnet(mikrotik);
   const publicBase = parseEnvPublicBase();
   const envServerIp = process.env.SERVER_IP?.trim();
   const publicHostname = publicBase?.hostname;
+
+  const panelIp = acceptConfiguredIp(serverNetwork.pinned_ip);
+  if (panelIp) return { ip: panelIp, source: 'panel', homeSubnet };
 
   // PUBLIC_BASE_URL يختلف عن SERVER_IP — المستخدم حدّث الرابط يدوياً
   if (publicHostname && envServerIp && publicHostname !== envServerIp) {
@@ -153,6 +156,15 @@ async function loadSiteSettings() {
   }
 }
 
+async function loadServerNetworkSettings() {
+  try {
+    const result = await query(`SELECT value FROM settings WHERE key = 'server_network'`);
+    return result.rows[0]?.value || {};
+  } catch {
+    return {};
+  }
+}
+
 function normalizePublicDomain(input) {
   let value = String(input || '').trim().toLowerCase();
   if (!value) return '';
@@ -162,10 +174,10 @@ function normalizePublicDomain(input) {
   return value;
 }
 
-function buildCache(mikrotik, site = {}) {
+function buildCache(mikrotik, site = {}, serverNetwork = {}) {
   const homeSubnet = getHomeSubnet(mikrotik);
   const detectedIp = detectPhysicalLanIp(homeSubnet);
-  const { ip: serverIp, source } = resolveServerIp(mikrotik);
+  const { ip: serverIp, source } = resolveServerIp(mikrotik, serverNetwork);
   const webPort = resolveWebPort(mikrotik);
   const apiPort = mikrotik.api_port || config.port;
   const publicDomain = normalizePublicDomain(site.public_domain);
@@ -195,8 +207,9 @@ function buildCache(mikrotik, site = {}) {
 export async function refreshPublicUrlCache({ syncUrls = true } = {}) {
   const mikrotik = await loadMikrotikSettings();
   const site = await loadSiteSettings();
+  const serverNetwork = await loadServerNetworkSettings();
   const previousIp = cache?.serverIp;
-  cache = buildCache(mikrotik, site);
+  cache = buildCache(mikrotik, site, serverNetwork);
   lastWatchedIp = cache.serverIp;
 
   if (syncUrls) {
@@ -316,7 +329,8 @@ async function watchNetworkChange() {
   const urls = getPublicUrls();
   const mikrotik = await loadMikrotikSettings();
   const site = await loadSiteSettings();
-  const next = buildCache(mikrotik, site);
+  const serverNetwork = await loadServerNetworkSettings();
+  const next = buildCache(mikrotik, site, serverNetwork);
 
   if (next.serverIp === urls.serverIp && next.baseUrl === urls.baseUrl) {
     lastWatchedIp = next.serverIp;

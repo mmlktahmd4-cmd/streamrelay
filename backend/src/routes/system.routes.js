@@ -8,8 +8,9 @@ import { getSiteConfig, saveSiteConfig } from '../services/site-config.service.j
 import { getBranding, saveBranding } from '../services/branding.service.js';
 import { getClusterSummary } from '../services/server.service.js';
 import { getBandwidthStats } from '../services/bandwidth.service.js';
+import { getServerIpConfig, applyServerIp } from '../services/server-ip.service.js';
 import { requireMinRole } from '../middleware/auth.js';
-import { validate, siteConfigSchema, brandingSettingsSchema } from '../middleware/validate.js';
+import { validate, siteConfigSchema, brandingSettingsSchema, serverIpApplySchema } from '../middleware/validate.js';
 import { config } from '../config/index.js';
 import { query } from '../db/pool.js';
 
@@ -106,6 +107,20 @@ export default async function systemRoutes(fastify) {
     protectedRoutes.get('/network-urls', {
       preHandler: [requireMinRole('operator')],
     }, async () => serverRestart.getNetworkStatus());
+
+    protectedRoutes.get('/server-ip', {
+      preHandler: [requireMinRole('admin')],
+    }, async () => getServerIpConfig());
+
+    protectedRoutes.put('/server-ip', {
+      preHandler: [requireMinRole('admin'), validate(serverIpApplySchema)],
+    }, async (request, reply) => {
+      try {
+        return await applyServerIp(request.body);
+      } catch (err) {
+        return reply.status(400).send({ error: err.message || 'تعذّر تطبيق IP السيرفر' });
+      }
+    });
 
     protectedRoutes.get('/site-config', {
       preHandler: [requireMinRole('operator')],

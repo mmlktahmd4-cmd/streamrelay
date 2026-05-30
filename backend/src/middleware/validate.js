@@ -162,6 +162,11 @@ export const mikrotikConfigSchema = z.object({
   server_ip: z.string().min(7).max(45),
 });
 
+export const serverIpApplySchema = z.object({
+  ip: z.string().regex(/^(?:\d{1,3}\.){3}\d{1,3}$/, 'IPv4 غير صالح'),
+  interface_name: z.string().max(64).optional(),
+});
+
 export const ipRuleSchema = z.object({
   ip_address: z.string().min(3).max(64),
   rule_type: z.enum(['allow', 'deny']),

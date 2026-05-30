@@ -1,6 +1,6 @@
 FROM node:20-alpine
 
-RUN apk add --no-cache ffmpeg wget coreutils procps
+RUN apk add --no-cache ffmpeg wget coreutils procps docker-cli docker-cli-compose
 
 WORKDIR /app
 

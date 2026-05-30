@@ -3,7 +3,7 @@ import { NavLink, Outlet, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { refreshNetwork } from '../api/client';
 import {
-  LayoutDashboard, Radio, Users, ScrollText, LogOut, Menu, X, Tv, Router, FolderOpen, Globe, Settings, Server,
+  LayoutDashboard, Radio, Users, ScrollText, LogOut, Menu, X, Tv, Router, FolderOpen, Globe, Settings, Server, Network,
 } from 'lucide-react';
 
 const navItems = [
@@ -13,6 +13,7 @@ const navItems = [
   { to: '/users', icon: Users, label: 'المستخدمين', adminOnly: true },
   { to: '/servers', icon: Server, label: 'سيرفرات البث', adminOnly: true },
   { to: '/settings', icon: Settings, label: 'الإعدادات', adminOnly: true },
+  { to: '/server-ip', icon: Network, label: 'IP السيرفر', adminOnly: true },
   { to: '/domain', icon: Globe, label: 'ربط الدومين (DNS)', adminOnly: true },
   { to: '/mikrotik', icon: Router, label: 'ربط MikroTik', adminOnly: true },
   { to: '/logs', icon: ScrollText, label: 'السجلات' },

@@ -51,9 +51,14 @@ services:
       POSTGRES_HOST: postgres
       REDIS_HOST: redis
       SERVER_ROLE: api-only
+      STREAMRELAY_INSTALL_DIR: /opt/streamrelay
+      STREAMRELAY_ENV_FILE: /app/.env
     volumes:
       - ./backend/src:/app/src:ro
       - ./scripts:/opt/streamrelay-scripts:ro
+      - ./.env:/app/.env:rw
+      - .:/opt/streamrelay:ro
+      - /var/run/docker.sock:/var/run/docker.sock
       - hls_data:/var/www/hls
       - mpegts_data:/var/www/mpegts
       - vod_data:/var/www/vod
