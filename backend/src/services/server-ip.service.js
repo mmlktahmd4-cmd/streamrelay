@@ -102,11 +102,12 @@ async function recreateDockerServices() {
   }
 
   try {
+    // لا نعيد إنشاء worker حتى لا تنقطع القنوات (FFmpeg أبناء له)
     await execFileAsync('docker', [
       'compose',
       '-f', composeFile,
       '--project-directory', installDir,
-      'up', '-d', '--force-recreate', 'api', 'worker', 'nginx',
+      'up', '-d', '--force-recreate', 'api', 'nginx',
     ], { timeout: 180000 });
 
     return { recreated: true };

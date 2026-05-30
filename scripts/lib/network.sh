@@ -112,29 +112,41 @@ subnet_for_ip() {
   fi
 }
 
-# IP: .env (إن كان على الجهاز) → PUBLIC_BASE_URL → .streamrelay-network → اكتشاف
+# IP مثبّت صالح للاستخدام؟
+#  - عام (VPS): يُوثَق دائماً
+#  - خاص (LAN): فقط إذا كان موجوداً فعلاً على كرت الشبكة (يتجنب IP قديم بعد تغيير الشبكة)
+usable_pinned_ip() {
+  local ip="${1:-}"
+  [ -n "$ip" ] || return 1
+  [ "$ip" != "127.0.0.1" ] || return 1
+  [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
+  if is_private_ip "$ip"; then
+    ip_on_local_host "$ip"
+    return
+  fi
+  return 0
+}
+
+# IP: .env (إن كان فعلاً على الكرت) → PUBLIC_BASE_URL → .streamrelay-network → اكتشاف
 resolve_server_ip() {
   local install_dir="${1:-.}"
   local existing pinned public_host
 
   existing="$(read_env_value SERVER_IP "$install_dir")"
-  if [ -n "$existing" ] && [ "$existing" != "127.0.0.1" ] && ip_on_local_host "$existing"; then
+  if usable_pinned_ip "$existing"; then
     echo "$existing"
     return
   fi
 
   public_host="$(read_public_base_hostname "$install_dir")"
-  if [ -n "$public_host" ] \
-    && [ "$public_host" != "127.0.0.1" ] \
-    && [ "$public_host" != "localhost" ] \
-    && [[ "$public_host" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  if [ "$public_host" != "localhost" ] && usable_pinned_ip "$public_host"; then
     echo "$public_host"
     return
   fi
 
   if [ -f "${install_dir}/.streamrelay-network" ]; then
     pinned="$(grep '^SERVER_IP=' "${install_dir}/.streamrelay-network" 2>/dev/null | cut -d= -f2- || true)"
-    if [ -n "$pinned" ] && [ "$pinned" != "127.0.0.1" ] && ip_on_local_host "$pinned"; then
+    if usable_pinned_ip "$pinned"; then
       echo "$pinned"
       return
     fi

@@ -61,9 +61,11 @@ if [ -n "$NO_RESTART" ]; then
   exit 0
 fi
 
-echo "=== إعادة تشغيل Docker ==="
-docker compose up -d --force-recreate api worker nginx
+echo "=== إعادة تشغيل Docker (بدون worker — تبقى القنوات تعمل) ==="
+# لا نعيد إنشاء worker: عمليات FFmpeg أبناء له وستُقتل عند إعادة إنشائه.
+# api يحدّث روابط البث في قاعدة البيانات، و worker يلتقط التغيير تلقائياً.
+docker compose up -d --force-recreate api nginx
 
 echo ""
 echo "تم! افتح: ${BASE_URL}/watch/login"
-echo "ملاحظة: أوقف ثم شغّل القنوات لتحديث روابط البث."
+echo "القنوات تستمر بالعمل — لا حاجة لإيقافها."
