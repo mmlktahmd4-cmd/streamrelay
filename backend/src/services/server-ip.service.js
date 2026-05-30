@@ -8,6 +8,15 @@ import { syncEnvPublicUrls, getEnvFilePath } from '../utils/env-file.js';
 import { writeNetworkRequest, networkRequestPending } from '../utils/network-request.js';
 import { isRunningInContainer } from '../utils/network-ip.js';
 import { refreshPublicUrlCache, getPublicUrls } from './public-url.service.js';
+import { setMikrotikServerIp } from './mikrotik.service.js';
+
+async function syncMikrotik(ip) {
+  try {
+    await setMikrotikServerIp(ip);
+  } catch (err) {
+    log.warn({ err: err.message }, 'Failed to sync MikroTik server IP');
+  }
+}
 
 const log = createChildLogger('server-ip');
 const execFileAsync = promisify(execFile);
@@ -21,6 +30,13 @@ function isValidIpv4(ip) {
     const n = parseInt(part, 10);
     return String(n) === part && n >= 0 && n <= 255;
   });
+}
+
+// أسماء وهمية تأتي حين يفشل كشف الكروت داخل الحاوية — نتجاهلها ليكتشف سكربت المضيف الكرت الحقيقي
+const BOGUS_INTERFACE_NAMES = new Set(['configured', 'local', 'host', 'unknown']);
+function cleanInterfaceName(name) {
+  const n = String(name || '').trim();
+  return BOGUS_INTERFACE_NAMES.has(n.toLowerCase()) ? '' : n;
 }
 
 async function loadServerNetworkSettings() {
@@ -52,21 +68,35 @@ function dockerSocketAvailable() {
   }
 }
 
+async function ownContainerImage() {
+  // داخل الحاوية: اسم المضيف = معرّف الحاوية القصير، فنستخرج صورة الحاوية الحالية
+  try {
+    const cid = fs.readFileSync('/etc/hostname', 'utf8').trim();
+    if (!cid) return null;
+    const { stdout } = await execFileAsync('docker', ['inspect', cid, '--format', '{{.Image}}'], { timeout: 15000 });
+    return stdout.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 async function detectHostInterfacesViaDocker() {
   const installDir = getInstallDir();
-  const composeFile = `${installDir}/docker-compose.yml`;
 
-  if (!dockerSocketAvailable() || !fs.existsSync(composeFile)) {
+  if (!dockerSocketAvailable()) {
     return null;
   }
 
+  const image = await ownContainerImage();
+  if (!image) return null;
+
   try {
+    // حاوية لحظية على شبكة المضيف لقراءة كروت الشبكة الحقيقية (docker compose run لا يدعم --net=host)
     const { stdout } = await execFileAsync('docker', [
-      'compose',
-      '-f', composeFile,
-      '--project-directory', installDir,
-      'run', '--rm', '--no-deps', '--net=host', '-T',
-      'api', 'node', 'src/scripts/list-host-interfaces.js',
+      'run', '--rm', '--network', 'host',
+      '-v', `${installDir}/backend/src:/app/src:ro`,
+      '--entrypoint', 'node',
+      image, '/app/src/scripts/list-host-interfaces.js',
     ], { timeout: 120000, maxBuffer: 1024 * 1024 });
 
     const parsed = JSON.parse(stdout.trim());
@@ -228,10 +258,9 @@ export async function applyServerIp(payload = {}) {
     if (!isValidIpv4(gw)) {
       throw new Error('أدخل بوابة (Gateway) صحيحة لوضع IP الثابت');
     }
-    const targetInterface = interfaceName || matched?.name;
-    if (!targetInterface) {
-      throw new Error('اختر كرت الشبكة الذي سيُثبَّت عليه IP');
-    }
+    // قد لا نعرف اسم الكرت الحقيقي من داخل الحاوية؛ نمرّر اسماً نظيفاً أو فارغاً
+    // ليكتشف سكربت المضيف الكرت الأساسي تلقائياً (كرت البوابة الافتراضية).
+    const targetInterface = cleanInterfaceName(interfaceName) || cleanInterfaceName(matched?.name);
     if (!dockerSocketAvailable()) {
       throw new Error(`تثبيت IP ثابت يتطلب الوصول للجهاز — نفّذ على السيرفر: sudo bash scripts/fix-server-ip.sh ${trimmed}`);
     }
@@ -253,21 +282,23 @@ export async function applyServerIp(payload = {}) {
       mode: 'static',
       pinned_ip: trimmed,
       previous_ip: previousIp,
-      interface_name: targetInterface,
+      interface_name: targetInterface || null,
       gateway: gw,
       dns: dnsList,
       prefix,
       updated_at: new Date().toISOString(),
     });
     await refreshPublicUrlCache({ syncUrls: true });
+    await syncMikrotik(trimmed);
 
-    log.info({ ip: trimmed, interface: targetInterface, gateway: gw, written: req.written, reboot }, 'Static IP request queued');
+    const ifaceLabel = targetInterface || 'الكرت الأساسي';
+    log.info({ ip: trimmed, interface: targetInterface || '(auto)', gateway: gw, written: req.written, reboot }, 'Static IP request queued');
     return {
       ok: true,
       mode: 'static',
       reboot,
       message: req.written
-        ? `تم طلب تثبيت IP ثابت ${trimmed} على ${targetInterface} — يُطبَّق على الجهاز خلال ثوانٍ. قد ينقطع الاتصال مؤقتاً.${rebootNote}`
+        ? `تم طلب تثبيت IP ثابت ${trimmed} على ${ifaceLabel} — يُطبَّق على الجهاز خلال ثوانٍ. قد ينقطع الاتصال مؤقتاً.${rebootNote}`
         : `تعذّر كتابة الطلب — نفّذ على السيرفر: sudo bash scripts/fix-server-ip.sh ${trimmed}`,
       ip: trimmed,
       previous_ip: previousIp,
@@ -293,6 +324,7 @@ export async function applyServerIp(payload = {}) {
   });
 
   const urls = await refreshPublicUrlCache({ syncUrls: true });
+  await syncMikrotik(trimmed);
 
   // إعادة إقلاع كامل (اختياري): .env و DB محفوظان، وعند الإقلاع يقرأ النظام القيم الجديدة
   if (reboot) {

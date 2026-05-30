@@ -66,6 +66,33 @@ export async function getMikrotikConfig() {
   };
 }
 
+/**
+ * يوحّد IP الميكروتك مع IP السيرفر الفعلي (يُستدعى عند ضبط IP من صفحة «IP السيرفر»).
+ * يحدّث server_ip و client_subnet دون لمس بقية الحقول، ولا يعيد بناء الكاش (المتصل يفعل ذلك).
+ * يُرجع true إذا تغيّرت القيمة فعلاً.
+ */
+export async function setMikrotikServerIp(ip) {
+  const serverIp = String(ip || '').trim();
+  if (!serverIp || !subnetFromServerIp(serverIp)) return false;
+
+  const result = await query(`SELECT value FROM settings WHERE key = 'mikrotik'`);
+  const current = result.rows[0]?.value || {};
+  if (current.server_ip === serverIp) return false;
+
+  const merged = {
+    ...current,
+    server_ip: serverIp,
+    client_subnet: subnetFromServerIp(serverIp),
+  };
+
+  await query(
+    `INSERT INTO settings (key, value, updated_at) VALUES ('mikrotik', $1, NOW())
+     ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()`,
+    [JSON.stringify(merged)]
+  );
+  return true;
+}
+
 export async function saveMikrotikConfig(data) {
   const current = await getMikrotikConfig();
   const serverIp = (data.server_ip ?? current.server_ip)?.trim();

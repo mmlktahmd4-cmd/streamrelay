@@ -219,6 +219,17 @@ export async function refreshPublicUrlCache({ syncUrls = true } = {}) {
     await syncMediaOutputUrls();
   }
 
+  // توحيد إعداد الميكروتك مع IP السيرفر الفعلي (يغطّي حالة DHCP بعد اكتشاف العنوان الجديد)
+  if (serverNetwork.mode && cache.serverIp && cache.serverIp !== '127.0.0.1'
+      && mikrotik.server_ip !== cache.serverIp) {
+    try {
+      const { setMikrotikServerIp } = await import('./mikrotik.service.js');
+      await setMikrotikServerIp(cache.serverIp);
+    } catch (err) {
+      log.warn({ err: err.message }, 'Failed to sync MikroTik IP during refresh');
+    }
+  }
+
   log.info({
     serverIp: cache.serverIp,
     detectedIp: cache.detectedIp,

@@ -21,6 +21,12 @@ function portSuffix(port) {
   return port && port !== 80 ? `:${port}` : '';
 }
 
+function clientSubnet(ip) {
+  const parts = String(ip || '').trim().split('.');
+  if (parts.length !== 4 || parts.some((p) => Number.isNaN(parseInt(p, 10)))) return null;
+  return `${parts[0]}.${parts[1]}.${parts[2]}.0/24`;
+}
+
 export default function ServerIp() {
   const [loading, setLoading] = useState(true);
   const [applying, setApplying] = useState(false);
@@ -312,6 +318,12 @@ export default function ServerIp() {
             <p>http://{selectedIp || '…'}{portSuffix(port)}/watch/login</p>
             <p>http://{selectedIp || '…'}{portSuffix(port)}/api/health</p>
           </div>
+          {clientSubnet(selectedIp) && (
+            <p className="text-xs text-slate-600 mt-3">
+              شبكة العملاء (MikroTik) ستُضبط تلقائياً على{' '}
+              <span className="font-mono font-bold">{clientSubnet(selectedIp)}</span> — يتطابق سكربت الجدار الناري مع هذا IP.
+            </p>
+          )}
         </div>
       )}
 

@@ -53,7 +53,15 @@ trap finish EXIT
 
 log "طلب شبكة: MODE=${MODE} IFACE=${INTERFACE} IP=${IP}/${PREFIX} GW=${GATEWAY} REBOOT=${REBOOT}"
 
-[ -n "$INTERFACE" ] || INTERFACE="$(detect_default_route_iface 2>/dev/null || true)"
+# تأكد أن اسم الكرت حقيقي وموجود؛ وإلا اكتشف الكرت الأساسي (كرت البوابة الافتراضية).
+# يحمي من الأسماء الوهمية مثل "configured" القادمة من الحاوية حين يفشل كشف الكروت.
+if [ -z "$INTERFACE" ] || ! ip link show "$INTERFACE" &>/dev/null; then
+  DETECTED_IFACE="$(detect_default_route_iface 2>/dev/null || true)"
+  if [ -n "$DETECTED_IFACE" ]; then
+    [ "$INTERFACE" != "$DETECTED_IFACE" ] && log "الكرت '${INTERFACE:-(فارغ)}' غير صالح — استخدام الكرت الأساسي المكتشف: ${DETECTED_IFACE}"
+    INTERFACE="$DETECTED_IFACE"
+  fi
+fi
 
 DNS_ARGS=()
 if [ -n "$DNS" ]; then
