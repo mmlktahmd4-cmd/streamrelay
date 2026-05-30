@@ -37,11 +37,17 @@ while IFS='=' read -r key val; do
   esac
 done < "$REQUEST_FILE"
 
-# إعادة الإقلاع بعد المعالجة إن طُلبت
+# إعادة الإقلاع بعد المعالجة إن طُلبت.
+# مهم: لا نستخدم عملية خلفية ( ... )& لأن systemd يقتل cgroup الخدمة عند انتهائها فلا تتم الإقلاع.
+# نحذف الطلب أولاً ثم نطلب الإقلاع عبر PID 1 مباشرة (يبقى مستقلاً عن الخدمة).
 maybe_reboot() {
   if [ "$REBOOT" = "1" ]; then
     log "إعادة إقلاع السيرفر بعد التطبيق..."
-    ( sleep 3; systemctl reboot 2>/dev/null || reboot ) &
+    finish
+    systemctl reboot 2>/dev/null \
+      || shutdown -r now 2>/dev/null \
+      || reboot 2>/dev/null \
+      || systemctl --force reboot 2>/dev/null
   fi
 }
 
@@ -88,11 +94,10 @@ case "$MODE" in
       exit 1
     fi
     pin_server_network_config "$INSTALL_DIR" "$IP" "$INTERFACE" 2>/dev/null || true
-    if [ "$REBOOT" = "1" ]; then
-      maybe_reboot
-    else
-      bash "${SCRIPT_DIR}/fix-server-ip.sh" "$IP" || true
-    fi
+    # دائماً نزامن التطبيق (يعيد إنشاء api+nginx لتحميل .env الجديد ويحدّث روابط القنوات).
+    # نفعلها حتى مع REBOOT=1 كحماية إن فشلت إعادة الإقلاع، فلا يبقى التطبيق على IP قديم.
+    bash "${SCRIPT_DIR}/fix-server-ip.sh" "$IP" || true
+    maybe_reboot
     ;;
 
   dhcp)
@@ -110,11 +115,9 @@ case "$MODE" in
     fi
     log "تم التحويل إلى DHCP — انتظار عنوان جديد..."
     sleep 6
-    if [ "$REBOOT" = "1" ]; then
-      maybe_reboot
-    else
-      bash "${SCRIPT_DIR}/fix-server-ip.sh" --detect || true
-    fi
+    # دائماً نزامن التطبيق على العنوان المكتشف (يعيد إنشاء api+nginx ويحدّث روابط القنوات).
+    bash "${SCRIPT_DIR}/fix-server-ip.sh" --detect || true
+    maybe_reboot
     ;;
 
   reboot)
