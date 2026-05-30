@@ -45,7 +45,7 @@ if [ -d "$INSTALL_DIR/.git" ] && [ "${STREAMRELAY_REPO_SYNCED:-}" != "1" ]; then
   exec bash "$INSTALL_DIR/scripts/ubuntu-quick-install.sh" "$@"
 fi
 
-INSTALL_SCRIPT_VERSION="2026.05.30-52"
+INSTALL_SCRIPT_VERSION="2026.05.30-53"
 chmod +x "${SCRIPT_DIR}"/*.sh 2>/dev/null || true
 
 load_network_lib() {
@@ -313,6 +313,7 @@ fi
 echo "[5/8] بناء لوحة التحكم (frontend)..."
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/common-install.sh"
+bash "${SCRIPT_DIR}/fetch-app-apk.sh" "$INSTALL_DIR" || true
 build_frontend
 
 # ── 5. بناء وتشغيل Docker ──

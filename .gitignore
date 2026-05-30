@@ -49,3 +49,6 @@ INSTALL-CREDENTIALS.txt
 # Build
 frontend/dist/
 backend/src/public/
+
+# Android app APK (يُنزَّل من إصدار GitHub أثناء التثبيت/التحديث)
+public/app/*.apk

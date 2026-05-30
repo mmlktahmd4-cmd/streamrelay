@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">StreamRelay</string>
+    <string name="setup_title">إعداد الاتصال بالسيرفر</string>
+    <string name="setup_hint">عنوان السيرفر، مثال: 192.168.5.102:8080</string>
+    <string name="setup_required">أدخل عنوان السيرفر</string>
+    <string name="setup_help">اكتب عنوان IP الخاص باللوحة مع المنفذ كما يظهر في صفحة \"IP السيرفر\".</string>
+    <string name="connect">اتصال</string>
+    <string name="action_refresh">تحديث</string>
+    <string name="action_server">تغيير عنوان السيرفر</string>
+</resources>

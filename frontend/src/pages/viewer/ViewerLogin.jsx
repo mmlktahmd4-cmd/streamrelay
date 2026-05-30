@@ -4,7 +4,8 @@ import { useAuth } from '../../context/AuthContext';
 import { useViewerBranding } from '../../context/ViewerBrandingContext';
 import { getAuthErrorMessage } from '../../utils/authErrors';
 import { setAuthPortal } from '../../utils/authStorage';
-import { Tv, Shield } from 'lucide-react';
+import { getAppInfo, getAppDownloadUrl } from '../../api/client';
+import { Tv, Shield, Smartphone } from 'lucide-react';
 
 export default function ViewerLogin() {
   const { login, logout, user, loading: authLoading } = useAuth();
@@ -14,9 +15,11 @@ export default function ViewerLogin() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [appAvailable, setAppAvailable] = useState(false);
 
   useEffect(() => {
     setAuthPortal('viewer');
+    getAppInfo().then(({ data }) => setAppAvailable(!!data?.available)).catch(() => {});
   }, []);
 
   const handleSubmit = async (e) => {
@@ -81,6 +84,16 @@ export default function ViewerLogin() {
             {loading ? 'جاري الدخول...' : 'دخول'}
           </button>
         </form>
+
+        {appAvailable && (
+          <a
+            href={getAppDownloadUrl()}
+            className="mt-5 w-full flex items-center justify-center gap-2 rounded-xl border border-teal-500/40 bg-teal-500/10 px-4 py-2.5 text-sm font-semibold text-teal-300 hover:bg-teal-500/20 transition-colors"
+          >
+            <Smartphone className="w-4 h-4" />
+            تحميل تطبيق الأندرويد
+          </a>
+        )}
 
         <p className="text-center mt-6 text-xs text-slate-500">
           مدير؟ <Link to="/login" className="text-teal-400 hover:underline font-semibold inline-flex items-center gap-1"><Shield className="w-3.5 h-3.5" /> لوحة الإدارة</Link>

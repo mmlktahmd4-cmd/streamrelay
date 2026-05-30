@@ -20,6 +20,9 @@ if declare -F install_network_apply_unit >/dev/null 2>&1; then
   install_network_apply_unit || true
 fi
 
+echo "=== تنزيل تطبيق الأندرويد (إن توفّر إصدار) ==="
+bash "${SCRIPT_DIR}/fetch-app-apk.sh" "$INSTALL_DIR" || true
+
 echo "=== بناء الواجهة ==="
 build_frontend
 

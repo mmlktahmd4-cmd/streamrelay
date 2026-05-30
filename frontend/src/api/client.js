@@ -220,6 +220,10 @@ export const applyServerIp = (data) => api.put('/server-ip', data);
 export const getSiteConfig = () => api.get('/site-config');
 export const saveSiteConfig = (data) => api.put('/site-config', data);
 export const getPublicBranding = () => axios.get(`${API_BASE}/branding`);
+
+// تطبيق الأندرويد (عام — لا يحتاج توكن)
+export const getAppInfo = () => axios.get(`${API_BASE}/app/info`);
+export const getAppDownloadUrl = () => `${API_BASE}/app/download`;
 export const getBrandingSettings = () => api.get('/settings/branding');
 export const saveBrandingSettings = (data) => api.put('/settings/branding', data);
 

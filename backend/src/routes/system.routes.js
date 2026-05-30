@@ -13,6 +13,12 @@ import { requireMinRole } from '../middleware/auth.js';
 import { validate, siteConfigSchema, brandingSettingsSchema, serverIpApplySchema } from '../middleware/validate.js';
 import { config } from '../config/index.js';
 import { query } from '../db/pool.js';
+import fs from 'fs';
+import path from 'path';
+
+// مسار ملف تطبيق الأندرويد المحلي (يُنزّله سكربت التثبيت/التحديث من إصدار GitHub)
+const APP_DIR = path.join(process.env.STREAMRELAY_INSTALL_DIR || '/opt/streamrelay', 'public', 'app');
+const APK_PATH = path.join(APP_DIR, 'StreamRelay.apk');
 
 export default async function systemRoutes(fastify) {
   // Public health check (outside auth hook)
@@ -26,6 +32,36 @@ export default async function systemRoutes(fastify) {
   }));
 
   fastify.get('/branding', async () => getBranding());
+
+  // معلومات تطبيق الأندرويد (عام — تستخدمه صفحة المشاهدة لإظهار زر التحميل)
+  fastify.get('/app/info', async () => {
+    try {
+      const st = fs.statSync(APK_PATH);
+      return {
+        available: true,
+        size: st.size,
+        filename: 'StreamRelay.apk',
+        updated_at: st.mtime.toISOString(),
+      };
+    } catch {
+      return { available: false };
+    }
+  });
+
+  // تنزيل تطبيق الأندرويد (عام)
+  fastify.get('/app/download', async (request, reply) => {
+    let st;
+    try {
+      st = fs.statSync(APK_PATH);
+    } catch {
+      return reply.status(404).send({ error: 'تطبيق الأندرويد غير متوفر بعد على هذا السيرفر' });
+    }
+    reply.header('Content-Type', 'application/vnd.android.package-archive');
+    reply.header('Content-Disposition', 'attachment; filename="StreamRelay.apk"');
+    reply.header('Content-Length', st.size);
+    reply.header('Cache-Control', 'no-cache');
+    return reply.send(fs.createReadStream(APK_PATH));
+  });
 
   await fastify.register(async function protectedSystemRoutes(protectedRoutes) {
     protectedRoutes.addHook('preHandler', fastify.authenticate);

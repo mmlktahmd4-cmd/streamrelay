@@ -16,6 +16,7 @@ import Users from './pages/Users';
 import Mikrotik from './pages/Mikrotik';
 import DomainDns from './pages/DomainDns';
 import ServerIp from './pages/ServerIp';
+import AppDownload from './pages/AppDownload';
 import Settings from './pages/Settings';
 import ServersPage from './pages/Servers';
 import Categories from './pages/Categories';
@@ -93,6 +94,7 @@ export default function App() {
         <Route path="servers" element={<AdminRoute minRole="admin"><ServersPage /></AdminRoute>} />
         <Route path="domain" element={<AdminRoute minRole="admin"><DomainDns /></AdminRoute>} />
         <Route path="server-ip" element={<AdminRoute minRole="admin"><ServerIp /></AdminRoute>} />
+        <Route path="app" element={<AdminRoute minRole="admin"><AppDownload /></AdminRoute>} />
         <Route path="settings" element={<AdminRoute minRole="admin"><Settings /></AdminRoute>} />
         <Route path="mikrotik" element={<AdminRoute minRole="admin"><Mikrotik /></AdminRoute>} />
         <Route path="logs" element={<Logs />} />
