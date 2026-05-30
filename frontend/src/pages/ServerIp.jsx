@@ -33,6 +33,7 @@ export default function ServerIp() {
   const [gateway, setGateway] = useState('');
   const [dns, setDns] = useState('1.1.1.1, 8.8.8.8');
   const [prefix, setPrefix] = useState(24);
+  const [reboot, setReboot] = useState(false);
 
   const loadConfig = async () => {
     try {
@@ -67,7 +68,8 @@ export default function ServerIp() {
       static: `تثبيت IP ثابت ${selectedIp} على ${selectedName}؟\nقد ينقطع الاتصال مؤقتاً أثناء التطبيق.`,
       dhcp: 'التحويل إلى DHCP؟\nسيأخذ الجهاز IP جديد من الراوتر وقد ينقطع الاتصال مؤقتاً.',
     }[mode];
-    if (!confirm(confirmText)) return;
+    const rebootWarn = reboot ? '\n\nسيُعاد إقلاع السيرفر بالكامل — تتوقف كل القنوات لمدة دقيقة ثم تعود.' : '';
+    if (!confirm(confirmText + rebootWarn)) return;
 
     setApplying(true);
     setMessage('جاري التطبيق...');
@@ -84,6 +86,7 @@ export default function ServerIp() {
         payload.prefix = Number(prefix) || 24;
         payload.dns = dns.split(',').map((d) => d.trim()).filter(Boolean);
       }
+      payload.reboot = reboot;
       const { data } = await applyServerIp(payload);
       setMessage(data.message || 'تم التطبيق');
       setTimeout(loadConfig, 2000);
@@ -312,6 +315,25 @@ export default function ServerIp() {
         </div>
       )}
 
+      <div className="card mb-6">
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={reboot}
+            onChange={(e) => setReboot(e.target.checked)}
+            disabled={!osApply}
+            className="mt-1 w-4 h-4 accent-cyan-600"
+          />
+          <span>
+            <span className="font-semibold text-slate-800">أعد إقلاع السيرفر بعد التطبيق</span>
+            <span className="block text-xs text-slate-500 mt-1">
+              إقلاع كامل لحفظ الإعدادات وتثبيت IP الجديد بشكل نظيف — تتوقف كل القنوات لمدة دقيقة ثم تعود تلقائياً.
+              {!osApply && ' (يتطلب الوصول للجهاز — حدّث السيرفر لأحدث إصدار)'}
+            </span>
+          </span>
+        </label>
+      </div>
+
       <div className="flex flex-wrap gap-3">
         <button
           type="button"
@@ -320,7 +342,7 @@ export default function ServerIp() {
           className="btn btn-primary"
         >
           {applying ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-          {applying ? 'جاري التطبيق...' : 'تطبيق على السيرفر'}
+          {applying ? 'جاري التطبيق...' : (reboot ? 'تطبيق وإعادة إقلاع' : 'تطبيق على السيرفر')}
         </button>
       </div>
     </div>

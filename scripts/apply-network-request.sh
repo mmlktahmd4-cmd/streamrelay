@@ -23,7 +23,7 @@ source "${SCRIPT_DIR}/lib/network.sh" 2>/dev/null || true
 # shellcheck source=lib/static-ip.sh
 source "${SCRIPT_DIR}/lib/static-ip.sh" 2>/dev/null || true
 
-MODE=""; INTERFACE=""; IP=""; PREFIX="24"; GATEWAY=""; DNS=""
+MODE=""; INTERFACE=""; IP=""; PREFIX="24"; GATEWAY=""; DNS=""; REBOOT="0"
 # قراءة آمنة لقيم KEY=VALUE فقط
 while IFS='=' read -r key val; do
   case "$key" in
@@ -33,8 +33,17 @@ while IFS='=' read -r key val; do
     PREFIX) PREFIX="$val" ;;
     GATEWAY) GATEWAY="$val" ;;
     DNS) DNS="$val" ;;
+    REBOOT) REBOOT="$val" ;;
   esac
 done < "$REQUEST_FILE"
+
+# إعادة الإقلاع بعد المعالجة إن طُلبت
+maybe_reboot() {
+  if [ "$REBOOT" = "1" ]; then
+    log "إعادة إقلاع السيرفر بعد التطبيق..."
+    ( sleep 3; systemctl reboot 2>/dev/null || reboot ) &
+  fi
+}
 
 # لا نحذف الطلب إلا بعد المعالجة — نحفظ نسخة معالَجة
 finish() {
@@ -42,7 +51,7 @@ finish() {
 }
 trap finish EXIT
 
-log "طلب شبكة: MODE=${MODE} IFACE=${INTERFACE} IP=${IP}/${PREFIX} GW=${GATEWAY}"
+log "طلب شبكة: MODE=${MODE} IFACE=${INTERFACE} IP=${IP}/${PREFIX} GW=${GATEWAY} REBOOT=${REBOOT}"
 
 [ -n "$INTERFACE" ] || INTERFACE="$(detect_default_route_iface 2>/dev/null || true)"
 
@@ -71,7 +80,11 @@ case "$MODE" in
       exit 1
     fi
     pin_server_network_config "$INSTALL_DIR" "$IP" "$INTERFACE" 2>/dev/null || true
-    bash "${SCRIPT_DIR}/fix-server-ip.sh" "$IP" || true
+    if [ "$REBOOT" = "1" ]; then
+      maybe_reboot
+    else
+      bash "${SCRIPT_DIR}/fix-server-ip.sh" "$IP" || true
+    fi
     ;;
 
   dhcp)
@@ -89,7 +102,17 @@ case "$MODE" in
     fi
     log "تم التحويل إلى DHCP — انتظار عنوان جديد..."
     sleep 6
-    bash "${SCRIPT_DIR}/fix-server-ip.sh" --detect || true
+    if [ "$REBOOT" = "1" ]; then
+      maybe_reboot
+    else
+      bash "${SCRIPT_DIR}/fix-server-ip.sh" --detect || true
+    fi
+    ;;
+
+  reboot)
+    # لا تغيير شبكة — .env و DB محدّثان مسبقاً، فقط إعادة إقلاع
+    REBOOT="1"
+    maybe_reboot
     ;;
 
   *)

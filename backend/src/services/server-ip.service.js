@@ -178,17 +178,19 @@ export async function applyServerIp(payload = {}) {
     gateway,
     dns,
     prefix = 24,
+    reboot = false,
   } = payload;
 
   const previous = await loadServerNetworkSettings();
   const previousIp = getPublicUrls().serverIp;
+  const rebootNote = reboot ? ' ثم يُعاد إقلاع السيرفر (تنقطع القنوات مؤقتاً ثم تعود).' : '';
 
   // ── DHCP: لا حاجة لـ IP — يطلب من الجهاز التحويل لـ DHCP ثم يكتشف العنوان ──
   if (mode === 'dhcp') {
     if (!dockerSocketAvailable()) {
       throw new Error('تغيير وضع DHCP يتطلب الوصول للجهاز — نفّذ على السيرفر: sudo bash scripts/fix-server-ip.sh --detect');
     }
-    const req = writeNetworkRequest({ mode: 'dhcp', interfaceName });
+    const req = writeNetworkRequest({ mode: 'dhcp', interfaceName, reboot });
     // مهم: لا نحتفظ بـ pinned_ip في DHCP حتى لا يطغى على العنوان المكتشف الجديد
     await saveServerNetworkSettings({
       mode: 'dhcp',
@@ -199,12 +201,13 @@ export async function applyServerIp(payload = {}) {
       dns: null,
       updated_at: new Date().toISOString(),
     });
-    log.info({ interfaceName, written: req.written }, 'DHCP network request queued');
+    log.info({ interfaceName, written: req.written, reboot }, 'DHCP network request queued');
     return {
       ok: true,
       mode: 'dhcp',
+      reboot,
       message: req.written
-        ? 'تم طلب التحويل إلى DHCP — يُطبَّق على الجهاز خلال ثوانٍ ثم تُحدَّث الروابط تلقائياً'
+        ? `تم طلب التحويل إلى DHCP — يُطبَّق على الجهاز خلال ثوانٍ ثم تُحدَّث الروابط تلقائياً.${rebootNote}`
         : 'تعذّر كتابة الطلب — نفّذ على السيرفر: sudo bash scripts/fix-server-ip.sh --detect',
       previous_ip: previousIp,
       request_written: req.written,
@@ -241,6 +244,7 @@ export async function applyServerIp(payload = {}) {
       interfaceName: targetInterface,
       gateway: gw,
       dns: dnsList,
+      reboot,
     });
 
     // حدّث .env فوراً ليتطابق مع IP الهدف بمجرد تطبيقه على الكرت
@@ -257,12 +261,13 @@ export async function applyServerIp(payload = {}) {
     });
     await refreshPublicUrlCache({ syncUrls: true });
 
-    log.info({ ip: trimmed, interface: targetInterface, gateway: gw, written: req.written }, 'Static IP request queued');
+    log.info({ ip: trimmed, interface: targetInterface, gateway: gw, written: req.written, reboot }, 'Static IP request queued');
     return {
       ok: true,
       mode: 'static',
+      reboot,
       message: req.written
-        ? `تم طلب تثبيت IP ثابت ${trimmed} على ${targetInterface} — يُطبَّق على الجهاز خلال ثوانٍ. قد ينقطع الاتصال مؤقتاً.`
+        ? `تم طلب تثبيت IP ثابت ${trimmed} على ${targetInterface} — يُطبَّق على الجهاز خلال ثوانٍ. قد ينقطع الاتصال مؤقتاً.${rebootNote}`
         : `تعذّر كتابة الطلب — نفّذ على السيرفر: sudo bash scripts/fix-server-ip.sh ${trimmed}`,
       ip: trimmed,
       previous_ip: previousIp,
@@ -288,6 +293,25 @@ export async function applyServerIp(payload = {}) {
   });
 
   const urls = await refreshPublicUrlCache({ syncUrls: true });
+
+  // إعادة إقلاع كامل (اختياري): .env و DB محفوظان، وعند الإقلاع يقرأ النظام القيم الجديدة
+  if (reboot) {
+    const req = writeNetworkRequest({ mode: 'reboot', reboot: true });
+    log.info({ ip: trimmed, rebootRequested: req.written }, 'Server IP applied with reboot request');
+    return {
+      ok: true,
+      mode: 'app_only',
+      reboot: true,
+      message: req.written
+        ? `تم حفظ IP ${trimmed}.${rebootNote}`
+        : `تم حفظ IP لكن تعذّر طلب الإقلاع — أعد الإقلاع يدوياً: sudo reboot`,
+      ip: trimmed,
+      previous_ip: previousIp,
+      env_written: envSync.envWritten,
+      request_written: req.written,
+      urls,
+    };
+  }
 
   let servicesRecreated = false;
   if (envSync.envWritten && dockerSocketAvailable()) {
@@ -316,6 +340,7 @@ export async function applyServerIp(payload = {}) {
   return {
     ok: true,
     mode: 'app_only',
+    reboot: false,
     message,
     ip: trimmed,
     previous_ip: previousIp,

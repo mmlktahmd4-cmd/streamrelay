@@ -169,6 +169,7 @@ export const serverIpApplySchema = z.object({
   gateway: z.string().regex(/^(?:\d{1,3}\.){3}\d{1,3}$/, 'بوابة غير صالحة').optional(),
   prefix: z.coerce.number().int().min(1).max(32).optional(),
   dns: z.union([z.string().max(255), z.array(z.string().max(45))]).optional(),
+  reboot: z.boolean().optional().default(false),
 }).refine((data) => data.mode === 'dhcp' || !!data.ip, {
   message: 'IP مطلوب',
   path: ['ip'],

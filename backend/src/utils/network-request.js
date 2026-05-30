@@ -17,9 +17,10 @@ function escapeValue(value) {
 
 /**
  * يكتب طلب تغيير شبكة على القرص (env-style) ليلتقطه systemd path unit على الجهاز.
- * mode: 'static' | 'dhcp'
+ * mode: 'static' | 'dhcp' | 'reboot'
+ * reboot: عند true يعيد الجهاز الإقلاع بعد تطبيق الطلب
  */
-export function writeNetworkRequest({ mode, ip, prefix, interfaceName, gateway, dns }) {
+export function writeNetworkRequest({ mode, ip, prefix, interfaceName, gateway, dns, reboot = false }) {
   const requestPath = getNetworkRequestPath();
   const lines = [
     '# StreamRelay — طلب تغيير شبكة (يُطبَّق تلقائياً ثم يُحذف)',
@@ -29,6 +30,7 @@ export function writeNetworkRequest({ mode, ip, prefix, interfaceName, gateway, 
     `PREFIX=${escapeValue(prefix || 24)}`,
     `GATEWAY=${escapeValue(gateway)}`,
     `DNS=${escapeValue(Array.isArray(dns) ? dns.join(',') : dns)}`,
+    `REBOOT=${reboot ? '1' : '0'}`,
     `REQUESTED_AT=${new Date().toISOString()}`,
   ];
 
