@@ -81,6 +81,7 @@ case "$MODE" in
       exit 1
     fi
     CIDR="${IP}/${PREFIX:-24}"
+    rm -f /etc/netplan/99-streamrelay-dhcp.yaml 2>/dev/null || true
     if [ -d /etc/netplan ] && command -v netplan &>/dev/null; then
       configure_static_ip_netplan "$INTERFACE" "$CIDR" "$GATEWAY" "${DNS_ARGS[@]}" \
         && log "تم تثبيت IP ثابت ${CIDR} على ${INTERFACE}" \
@@ -101,9 +102,28 @@ case "$MODE" in
     ;;
 
   dhcp)
-    rm -f /etc/netplan/99-streamrelay-static.yaml 2>/dev/null || true
     rm -f "${INSTALL_DIR}/.streamrelay-network" 2>/dev/null || true
-    if command -v netplan &>/dev/null; then
+    if [ -d /etc/netplan ] && command -v netplan &>/dev/null; then
+      # تحديد الكرت إن لم يصل (تفادي ترك الكرت بلا أي إعداد = بلا IP).
+      if [ -z "$INTERFACE" ]; then
+        INTERFACE="$(detect_default_route_iface 2>/dev/null || true)"
+      fi
+      if [ -z "$INTERFACE" ]; then
+        log "خطأ: تعذّر تحديد كرت الشبكة لوضع DHCP — تم الإلغاء لتفادي فقدان الاتصال"
+        exit 1
+      fi
+      rm -f /etc/netplan/99-streamrelay-static.yaml 2>/dev/null || true
+      # إنشاء ملف DHCP صريح — حذف الملف الثابت وحده يترك الكرت بلا عنوان.
+      cat > /etc/netplan/99-streamrelay-dhcp.yaml <<EOF
+# StreamRelay — DHCP (أُنشئ تلقائياً)
+network:
+  version: 2
+  ethernets:
+    ${INTERFACE}:
+      dhcp4: true
+      dhcp6: false
+EOF
+      chmod 600 /etc/netplan/99-streamrelay-dhcp.yaml 2>/dev/null || true
       netplan apply 2>/dev/null || log "تحذير: netplan apply فشل"
     fi
     if command -v nmcli &>/dev/null && [ -n "$INTERFACE" ]; then
