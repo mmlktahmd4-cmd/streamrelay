@@ -15,6 +15,11 @@ cd "$INSTALL_DIR"
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/common-install.sh"
 
+# تأكد من وجود وحدة تطبيق الشبكة (للأنظمة المثبّتة قبل هذه الميزة)
+if declare -F install_network_apply_unit >/dev/null 2>&1; then
+  install_network_apply_unit || true
+fi
+
 echo "=== بناء الواجهة ==="
 build_frontend
 

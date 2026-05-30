@@ -45,7 +45,7 @@ if [ -d "$INSTALL_DIR/.git" ] && [ "${STREAMRELAY_REPO_SYNCED:-}" != "1" ]; then
   exec bash "$INSTALL_DIR/scripts/ubuntu-quick-install.sh" "$@"
 fi
 
-INSTALL_SCRIPT_VERSION="2026.05.30-44"
+INSTALL_SCRIPT_VERSION="2026.05.30-45"
 chmod +x "${SCRIPT_DIR}"/*.sh 2>/dev/null || true
 
 load_network_lib() {
@@ -357,6 +357,11 @@ UNIT
 
 systemctl daemon-reload
 systemctl enable streamrelay.service
+
+# وحدة تطبيق طلبات الشبكة من اللوحة (تغيير IP / static / DHCP)
+if declare -F install_network_apply_unit >/dev/null 2>&1; then
+  install_network_apply_unit || true
+fi
 
 # ── MikroTik IP hint ──
 echo ""

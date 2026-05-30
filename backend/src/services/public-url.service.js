@@ -92,8 +92,11 @@ function resolveServerIp(mikrotik, serverNetwork = {}) {
   const envServerIp = process.env.SERVER_IP?.trim();
   const publicHostname = publicBase?.hostname;
 
-  const panelIp = acceptConfiguredIp(serverNetwork.pinned_ip);
-  if (panelIp) return { ip: panelIp, source: 'panel', homeSubnet };
+  // وضع DHCP: تجاهل أي IP مثبّت سابقاً — اعتمد على .env المكتشف
+  if (serverNetwork.mode !== 'dhcp') {
+    const panelIp = acceptConfiguredIp(serverNetwork.pinned_ip);
+    if (panelIp) return { ip: panelIp, source: 'panel', homeSubnet };
+  }
 
   // PUBLIC_BASE_URL يختلف عن SERVER_IP — المستخدم حدّث الرابط يدوياً
   if (publicHostname && envServerIp && publicHostname !== envServerIp) {

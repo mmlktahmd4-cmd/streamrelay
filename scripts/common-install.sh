@@ -47,13 +47,52 @@ wait_for_api() {
   return 1
 }
 
+# وحدة systemd تراقب .network-request وتطبّقها على الجهاز (root) — تسمح بتغيير IP من اللوحة
+install_network_apply_unit() {
+  local dir="${INSTALL_DIR:-/opt/streamrelay}"
+  command -v systemctl >/dev/null 2>&1 || return 0
+  [ -w /etc/systemd/system ] || return 0
+
+  cat > /etc/systemd/system/streamrelay-network.service <<UNIT
+[Unit]
+Description=StreamRelay apply network request from admin panel
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=${dir}
+ExecStart=/bin/bash ${dir}/scripts/apply-network-request.sh
+UNIT
+
+  cat > /etc/systemd/system/streamrelay-network.path <<UNIT
+[Unit]
+Description=StreamRelay watch .network-request file
+
+[Path]
+PathExists=${dir}/.network-request
+Unit=streamrelay-network.service
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+  systemctl daemon-reload 2>/dev/null || true
+  systemctl enable --now streamrelay-network.path 2>/dev/null || true
+}
+
 print_streamrelay_urls() {
   install_common_dir
   local script_dir server_ip http_port base_url
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   # shellcheck source=lib/network.sh
   source "${script_dir}/lib/network.sh" 2>/dev/null || true
-  server_ip="$(grep '^SERVER_IP=' .env 2>/dev/null | cut -d= -f2- || detect_server_ip)"
+  # IP الفعلي على كرت الشبكة — لا نعتمد على SERVER_IP قديم في .env
+  if declare -F resolve_server_ip >/dev/null 2>&1; then
+    server_ip="$(resolve_server_ip . 2>/dev/null)"
+  else
+    server_ip="$(grep '^SERVER_IP=' .env 2>/dev/null | cut -d= -f2-)"
+  fi
+  [ -n "$server_ip" ] || server_ip="$(detect_server_ip 2>/dev/null || echo 127.0.0.1)"
   http_port="$(read_http_port . 2>/dev/null || echo 80)"
   base_url="$(public_base_url "$server_ip" "$http_port" 2>/dev/null || echo "http://${server_ip}:${http_port}")"
 

@@ -163,8 +163,15 @@ export const mikrotikConfigSchema = z.object({
 });
 
 export const serverIpApplySchema = z.object({
-  ip: z.string().regex(/^(?:\d{1,3}\.){3}\d{1,3}$/, 'IPv4 غير صالح'),
+  mode: z.enum(['app_only', 'static', 'dhcp']).default('app_only'),
+  ip: z.string().regex(/^(?:\d{1,3}\.){3}\d{1,3}$/, 'IPv4 غير صالح').optional(),
   interface_name: z.string().max(64).optional(),
+  gateway: z.string().regex(/^(?:\d{1,3}\.){3}\d{1,3}$/, 'بوابة غير صالحة').optional(),
+  prefix: z.coerce.number().int().min(1).max(32).optional(),
+  dns: z.union([z.string().max(255), z.array(z.string().max(45))]).optional(),
+}).refine((data) => data.mode === 'dhcp' || !!data.ip, {
+  message: 'IP مطلوب',
+  path: ['ip'],
 });
 
 export const ipRuleSchema = z.object({
