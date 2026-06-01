@@ -1,0 +1,5 @@
+# Unix shell scripts — always LF (fixes Permission denied / awk errors on Linux)
+*.sh text eol=lf
+
+# Docs can stay as-is
+*.md text

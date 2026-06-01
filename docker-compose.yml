@@ -1,0 +1,161 @@
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: sr-postgres
+    restart: unless-stopped
+    command: ["postgres", "-c", "listen_addresses=*", "-c", "hba_file=/etc/postgresql/pg_hba.conf"]
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-streamrelay}
+      POSTGRES_USER: ${POSTGRES_USER:-streamrelay}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-streamrelay_secret}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./database/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    ports:
+      - "${POSTGRES_PUBLISH:-127.0.0.1:5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-streamrelay}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - streamrelay
+
+  redis:
+    image: redis:7-alpine
+    container_name: sr-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --bind 0.0.0.0 ${REDIS_PASSWORD:+--requirepass $REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PUBLISH:-127.0.0.1:6379}:6379"
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ${REDIS_PASSWORD:+-a \"$REDIS_PASSWORD\"} ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - streamrelay
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sr-api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      SERVER_ROLE: api-only
+      STREAMRELAY_INSTALL_DIR: /opt/streamrelay
+      STREAMRELAY_ENV_FILE: /app/.env
+      STREAMRELAY_NETWORK_REQUEST: /opt/streamrelay/.network-request
+    volumes:
+      - ./backend/src:/app/src:ro
+      - ./scripts:/opt/streamrelay-scripts:ro
+      - ./.env:/app/.env:rw
+      - .:/opt/streamrelay:rw
+      - /var/run/docker.sock:/var/run/docker.sock
+      - hls_data:/var/www/hls
+      - mpegts_data:/var/www/mpegts
+      - vod_data:/var/www/vod
+      - logs_data:/var/log/streamrelay
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - streamrelay
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sr-worker
+    restart: unless-stopped
+    command: ["node", "src/worker.js"]
+    healthcheck:
+      disable: true
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      SERVER_ROLE: full
+      SERVER_ID: ${SERVER_ID:-node-1}
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+      - 1.1.1.1
+    volumes:
+      - ./backend/src:/app/src:ro
+      - hls_data:/var/www/hls
+      - mpegts_data:/var/www/mpegts
+      - vod_data:/var/www/vod
+      - logs_data:/var/log/streamrelay
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - streamrelay
+
+  # لإضافة سيرفر بث ثاني على نفس الجهاز: انسخ خدمة worker، غيّر container_name و SERVER_ID=node-2
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: /api
+    container_name: sr-frontend
+    restart: unless-stopped
+    volumes:
+      - ./frontend/dist:/usr/share/nginx/html:ro
+    depends_on:
+      - api
+    networks:
+      - streamrelay
+
+  nginx:
+    image: tiangolo/nginx-rtmp
+    container_name: sr-nginx
+    restart: unless-stopped
+    command: ["/bin/sh", "-c", "mkdir -p /var/www/hls/rtmp && exec nginx -g 'daemon off;'"]
+    ports:
+      - "${STREAMRELAY_HTTP_PORT:-80}:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./frontend/dist:/var/www/frontend:ro
+      - hls_data:/var/www/hls
+      - mpegts_data:/var/www/mpegts:ro
+      - vod_data:/var/www/vod:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - api
+      - frontend
+    networks:
+      - streamrelay
+
+volumes:
+  postgres_data:
+  redis_data:
+  hls_data:
+  mpegts_data:
+  vod_data:
+  logs_data:
+
+networks:
+  streamrelay:
+    driver: bridge

@@ -1,0 +1,10 @@
+{
+  "approvalMode": "unrestricted",
+  "mcpAllowlist": ["*:*"],
+  "autoRun": {
+    "allow_instructions": [
+      "Allow all shell commands, file edits, MCP tools, web fetch, and web search needed to complete the user's task without asking for approval."
+    ],
+    "block_instructions": []
+  }
+}

@@ -1,0 +1,191 @@
+import Fastify from 'fastify';
+import cors from '@fastify/cors';
+import helmet from '@fastify/helmet';
+import jwt from '@fastify/jwt';
+import rateLimit from '@fastify/rate-limit';
+import fastifyStatic from '@fastify/static';
+import multipart from '@fastify/multipart';
+import path from 'path';
+import fs from 'fs';
+import { config } from './config/index.js';
+import { logger, createChildLogger } from './utils/logger.js';
+import { runMigrations } from './db/migrate.js';
+import { authenticate } from './middleware/auth.js';
+import { setupQueueProcessors } from './services/queue.service.js';
+import { stopAllStreams } from './services/stream.service.js';
+import { refreshPublicUrlCache, isOriginAllowed, startNetworkWatcher } from './services/public-url.service.js';
+import { recordEgressBytes } from './services/bandwidth.service.js';
+import { registerHlsRelayRoutes } from './services/hls-relay.service.js';
+import { repairStreamServerInternalUrls } from './services/server.service.js';
+
+import authRoutes from './routes/auth.routes.js';
+import channelRoutes from './routes/channel.routes.js';
+import userRoutes from './routes/user.routes.js';
+import systemRoutes from './routes/system.routes.js';
+import mikrotikRoutes from './routes/mikrotik.routes.js';
+import categoryRoutes from './routes/category.routes.js';
+import serverRoutes from './routes/server.routes.js';
+import internalRoutes from './routes/internal.routes.js';
+
+const log = createChildLogger('server');
+
+async function buildApp() {
+  const app = Fastify({
+    logger: false,
+    trustProxy: true,
+    requestTimeout: 0,
+    connectionTimeout: 0,
+    bodyLimit: 4 * 1024 * 1024 * 1024,
+  });
+
+  // Allow DELETE requests with empty JSON body (axios default Content-Type)
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (req, body, done) => {
+    try {
+      done(null, body?.length ? JSON.parse(body) : {});
+    } catch (err) {
+      done(err);
+    }
+  });
+
+  // Security headers
+  await app.register(helmet, {
+    contentSecurityPolicy: false,
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  });
+
+  // CORS — يسمح بعناوين الشبكة المحلية وIP جهاز البث من إعدادات الميكروتik
+  await app.register(cors, {
+    origin: (origin, cb) => {
+      cb(null, isOriginAllowed(origin));
+    },
+    credentials: true,
+  });
+
+  // Rate limiting
+  await app.register(rateLimit, {
+    max: config.rateLimit.max,
+    timeWindow: config.rateLimit.windowMs,
+  });
+
+  // JWT
+  await app.register(jwt, {
+    secret: config.jwt.secret,
+  });
+
+  app.decorate('authenticate', authenticate);
+
+  await app.register(multipart, {
+    limits: {
+      fileSize: 4 * 1024 * 1024 * 1024,
+      fieldSize: 1024 * 1024,
+      fields: 20,
+      files: 1,
+    },
+  });
+
+  const hlsHeaders = (res, filePath) => {
+    if (filePath.endsWith('.m3u8')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    } else if (filePath.endsWith('.ts')) {
+      res.setHeader('Cache-Control', 'max-age=5');
+    }
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  };
+
+  const hlsRoot = path.resolve(config.streaming.hlsDir);
+
+  registerHlsRelayRoutes(app);
+
+  await app.register(fastifyStatic, {
+    root: hlsRoot,
+    prefix: '/hls/',
+    decorateReply: false,
+    setHeaders: hlsHeaders,
+  });
+
+  // Serve uploaded VOD files
+  await app.register(fastifyStatic, {
+    root: path.resolve(config.streaming.vodDir),
+    prefix: '/vod/',
+    decorateReply: false,
+    setHeaders(res) {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Accept-Ranges', 'bytes');
+    },
+  });
+
+  // Routes
+  await app.register(authRoutes, { prefix: '/api/auth' });
+  await app.register(channelRoutes, { prefix: '/api/channels' });
+  await app.register(userRoutes, { prefix: '/api/users' });
+  await app.register(systemRoutes, { prefix: '/api' });
+  await app.register(mikrotikRoutes, { prefix: '/api/mikrotik' });
+  await app.register(categoryRoutes, { prefix: '/api/categories' });
+  await app.register(serverRoutes, { prefix: '/api/servers' });
+  await app.register(internalRoutes, { prefix: '/api/internal' });
+
+  app.addHook('onResponse', async (request, reply) => {
+    if (reply.statusCode < 200 || reply.statusCode >= 400) return;
+    const match = request.url.match(/\/(?:api\/)?hls\/([^/?]+)\//);
+    if (!match) return;
+    const len = parseInt(String(reply.getHeader('content-length') || '0'), 10);
+    if (len > 0) recordEgressBytes(match[1], len);
+    try {
+      const { noteOnDemandActivity } = await import('./services/on-demand.service.js');
+      await noteOnDemandActivity(match[1]);
+    } catch { /* ignore */ }
+  });
+
+  // Global error handler
+  app.setErrorHandler((error, request, reply) => {
+    log.error({ err: error, url: request.url }, 'Request error');
+
+    if (error.validation) {
+      return reply.status(400).send({ error: 'Validation error', details: error.validation });
+    }
+
+    const statusCode = error.statusCode || 500;
+    reply.status(statusCode).send({
+      error: statusCode === 500 ? 'Internal server error' : error.message,
+    });
+  });
+
+  // Graceful shutdown
+  const shutdown = async (signal) => {
+    log.info({ signal }, 'Shutting down gracefully');
+    await stopAllStreams();
+    await app.close();
+    process.exit(0);
+  };
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+
+  return app;
+}
+
+async function main() {
+  try {
+    fs.mkdirSync(config.streaming.vodDir, { recursive: true });
+    await runMigrations();
+    await refreshPublicUrlCache();
+    repairStreamServerInternalUrls().catch((err) => {
+      log.warn({ err: err.message }, 'Remote server URL repair skipped');
+    });
+    startNetworkWatcher();
+
+    // معالجات الطابور (FFmpeg + health) — worker فقط؛ API يضيف jobs ولا ينفّذها
+    if (config.serverRole !== 'api-only') {
+      await setupQueueProcessors();
+    }
+
+    const app = await buildApp();
+    await app.listen({ port: config.port, host: config.host });
+    log.info({ port: config.port, role: config.serverRole }, 'StreamRelay API started');
+  } catch (err) {
+    log.fatal({ err }, 'Failed to start server');
+    process.exit(1);
+  }
+}
+
+main();
