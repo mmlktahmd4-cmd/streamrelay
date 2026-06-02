@@ -129,7 +129,7 @@ async function buildApp() {
     const match = request.url.match(/\/(?:api\/)?hls\/([^/?]+)\//);
     if (!match) return;
     const len = parseInt(String(reply.getHeader('content-length') || '0'), 10);
-    if (len > 0) recordEgressBytes(match[1], len);
+    if (len > 0) await recordEgressBytes(match[1], len);
     try {
       const { noteOnDemandActivity } = await import('./services/on-demand.service.js');
       await noteOnDemandActivity(match[1]);

@@ -11,15 +11,17 @@ const log = createChildLogger('bandwidth');
 
 const PREFIX = 'sr:bandwidth:';
 const HOST_PREFIX = `${PREFIX}host:`;
+const EGRESS_ACCUM_PREFIX = `${PREFIX}egress:accum:`;
 const POLL_MS = 1000;
 const BPS_WINDOW_SEC = 3;
 const TTL_SEC = 20;
+const NGINX_EGRESS_LOG = process.env.NGINX_EGRESS_LOG || '/var/log/nginx/hls_egress.log';
+const UUID_RE = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 
 let redis = null;
 const trackers = new Map();
 const hlsSamples = new Map();
 const egressSamples = new Map();
-const egressAccum = new Map();
 
 let prevNetSample = null;
 let cachedHostRxBps = 0;
@@ -28,6 +30,7 @@ let hostNetTimer = null;
 let monitorTimer = null;
 let latestSnapshot = null;
 let slugToChannel = new Map();
+let nginxEgressLogOffset = 0;
 
 function getRedis() {
   if (!redis) {
@@ -119,29 +122,86 @@ function pruneMaps(activeIds, activeSlugs) {
   for (const slug of egressSamples.keys()) {
     if (!activeSlugs.has(slug)) egressSamples.delete(slug);
   }
-  for (const slug of egressAccum.keys()) {
-    if (!activeSlugs.has(slug)) egressAccum.delete(slug);
+}
+
+function normalizeEgressKey(streamKey) {
+  const key = decodeURIComponent(String(streamKey || '')).trim();
+  if (!key) return '';
+  if (UUID_RE.test(key)) return key;
+  const mapped = slugToChannel.get(key);
+  return mapped?.id || key;
+}
+
+async function pullEgressDelta(streamKey) {
+  const key = normalizeEgressKey(streamKey);
+  if (!key) return 0;
+
+  try {
+    const r = getRedis();
+    const delta = parseInt(await r.getdel(`${EGRESS_ACCUM_PREFIX}${key}`) || '0', 10);
+    return Number.isFinite(delta) && delta > 0 ? delta : 0;
+  } catch {
+    return 0;
   }
 }
 
-function sampleEgressBandwidth(slug) {
+async function sampleEgressBandwidth(streamKey) {
+  const key = normalizeEgressKey(streamKey);
   const now = Date.now();
-  const delta = egressAccum.get(slug) || 0;
-  egressAccum.set(slug, 0);
+  const delta = await pullEgressDelta(key);
 
-  const prev = egressSamples.get(slug) || { sessionBytes: 0, bps: 0, at: now, window: [] };
+  const prev = egressSamples.get(key) || { sessionBytes: 0, bps: 0, at: now, window: [] };
   const sessionBytes = (prev.sessionBytes || 0) + delta;
   const { bps, window } = rollingBps(prev, delta, now);
 
-  egressSamples.set(slug, { sessionBytes, bps, at: now, window });
+  egressSamples.set(key, { sessionBytes, bps, at: now, window });
   return { egress_bps: bps, egress_session_bytes: sessionBytes };
 }
 
-export function recordEgressBytes(slug, bytes) {
+export async function recordEgressBytes(streamKey, bytes) {
   const value = parseInt(bytes, 10);
-  if (!slug || !Number.isFinite(value) || value <= 0) return;
-  const key = decodeURIComponent(String(slug));
-  egressAccum.set(key, (egressAccum.get(key) || 0) + value);
+  if (!streamKey || !Number.isFinite(value) || value <= 0) return;
+
+  const key = normalizeEgressKey(streamKey);
+  if (!key) return;
+
+  try {
+    const r = getRedis();
+    await r.incrby(`${EGRESS_ACCUM_PREFIX}${key}`, value);
+    await r.expire(`${EGRESS_ACCUM_PREFIX}${key}`, TTL_SEC);
+  } catch { /* ignore */ }
+}
+
+async function ingestNginxEgressLog() {
+  try {
+    const stat = await fs.stat(NGINX_EGRESS_LOG);
+    if (nginxEgressLogOffset > stat.size) nginxEgressLogOffset = 0;
+    if (stat.size <= nginxEgressLogOffset) return;
+
+    const handle = await fs.open(NGINX_EGRESS_LOG, 'r');
+    try {
+      const len = stat.size - nginxEgressLogOffset;
+      const buf = Buffer.alloc(len);
+      await handle.read(buf, 0, len, nginxEgressLogOffset);
+      nginxEgressLogOffset = stat.size;
+
+      for (const line of buf.toString('utf8').split('\n')) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        const space = trimmed.indexOf(' ');
+        if (space <= 0) continue;
+        const streamKey = trimmed.slice(0, space);
+        const bytes = parseInt(trimmed.slice(space + 1), 10);
+        if (bytes > 0) await recordEgressBytes(streamKey, bytes);
+      }
+    } finally {
+      await handle.close();
+    }
+  } catch (err) {
+    if (err?.code !== 'ENOENT') {
+      log.debug({ err: err.message, logPath: NGINX_EGRESS_LOG }, 'Nginx egress log ingest failed');
+    }
+  }
 }
 
 async function sampleHostNetwork() {
@@ -190,7 +250,11 @@ async function buildSnapshot(runningChannels) {
   }
   runningChannels = localChannels;
 
-  slugToChannel = new Map(runningChannels.map((ch) => [ch.id, ch]));
+  slugToChannel = new Map();
+  for (const ch of runningChannels) {
+    slugToChannel.set(ch.id, ch);
+    if (ch.slug) slugToChannel.set(ch.slug, ch);
+  }
   const activeIds = new Set(runningChannels.map((ch) => ch.id));
   const activeKeys = new Set(runningChannels.map((ch) => ch.id));
 
@@ -202,7 +266,7 @@ async function buildSnapshot(runningChannels) {
 
   for (const ch of runningChannels) {
     const pull = await samplePullBandwidth(ch.id, ch.id);
-    const egress = sampleEgressBandwidth(ch.id);
+    const egress = await sampleEgressBandwidth(ch.id);
 
     channels.push({
       channel_id: ch.id,
@@ -352,6 +416,7 @@ function emptyBandwidthStats() {
 
 async function tickMonitor() {
   try {
+    await ingestNginxEgressLog();
     const { isChannelAssignedToLocalWorker } = await import('./server.service.js');
     const running = await channelService.getRunningChannels();
     const localChannels = [];
@@ -396,7 +461,7 @@ async function pollTracker(channelId) {
   }
 
   const pull = await samplePullBandwidth(channelId, tracker.dirKey);
-  const egress = sampleEgressBandwidth(tracker.dirKey);
+  const egress = await sampleEgressBandwidth(tracker.dirKey);
   tracker.bps = pull.pull_bps;
   tracker.sessionBytes = pull.pull_session_bytes;
 

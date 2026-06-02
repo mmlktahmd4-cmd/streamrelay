@@ -102,6 +102,7 @@ services:
       - mpegts_data:/var/www/mpegts
       - vod_data:/var/www/vod
       - logs_data:/var/log/streamrelay
+      - nginx_logs:/var/log/nginx:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -142,6 +143,7 @@ services:
       - mpegts_data:/var/www/mpegts:ro
       - vod_data:/var/www/vod:ro
       - ./nginx/ssl:/etc/nginx/ssl:ro
+      - nginx_logs:/var/log/nginx
     depends_on:
       - api
       - frontend
@@ -155,6 +157,7 @@ volumes:
   mpegts_data:
   vod_data:
   logs_data:
+  nginx_logs:
 
 networks:
   streamrelay:
