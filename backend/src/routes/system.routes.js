@@ -9,7 +9,7 @@ import { getBranding, saveBranding } from '../services/branding.service.js';
 import { getClusterSummary } from '../services/server.service.js';
 import { getBandwidthStats } from '../services/bandwidth.service.js';
 import { getServerIpConfig, applyServerIp } from '../services/server-ip.service.js';
-import { getUpdateStatus, triggerSelfUpdate } from '../services/self-update.service.js';
+import { getUpdateStatus, triggerSelfUpdate, triggerSelfRollback } from '../services/self-update.service.js';
 import { requireMinRole } from '../middleware/auth.js';
 import { validate, siteConfigSchema, brandingSettingsSchema, serverIpApplySchema } from '../middleware/validate.js';
 import { config } from '../config/index.js';
@@ -173,6 +173,16 @@ export default async function systemRoutes(fastify) {
         return triggerSelfUpdate(request.body || {});
       } catch (err) {
         return reply.status(400).send({ error: err.message || 'تعذّر بدء تحديث اللوحة' });
+      }
+    });
+
+    protectedRoutes.post('/self-update/rollback', {
+      preHandler: [requireMinRole('admin')],
+    }, async (request, reply) => {
+      try {
+        return triggerSelfRollback();
+      } catch (err) {
+        return reply.status(400).send({ error: err.message || 'تعذّر بدء الرجوع للنسخة السابقة' });
       }
     });
 

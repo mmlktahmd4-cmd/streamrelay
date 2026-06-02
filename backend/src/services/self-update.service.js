@@ -24,6 +24,30 @@ function statusPath() {
   return path.join(getInstallDir(), '.update-status');
 }
 
+function previousCommitPath() {
+  return path.join(getInstallDir(), '.update-previous-commit');
+}
+
+function rollbackRequestPath() {
+  return path.join(getInstallDir(), '.update-rollback-request');
+}
+
+function readPreviousCommit() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(previousCommitPath(), 'utf8'));
+    const commit = String(raw?.commit || '').trim();
+    if (!commit) return null;
+    return {
+      commit,
+      commit_short: commit.slice(0, 7),
+      label: raw?.label || commit.slice(0, 7),
+      saved_at: raw?.saved_at || null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function readHeadRef() {
   try {
     const gitDir = path.join(getInstallDir(), '.git');
@@ -327,7 +351,11 @@ export async function getUpdateStatus({ force = false } = {}) {
   return {
     current_commit: readCurrentCommit(),
     current_commit_full: readCurrentCommitFull(),
+    previous_commit: readPreviousCommit(),
     pending,
+    rollback_pending: (() => {
+      try { return fs.existsSync(rollbackRequestPath()); } catch { return false; }
+    })(),
     os_apply_available: osApplyAvailable(),
     last,
     remote,
@@ -379,5 +407,52 @@ export function triggerSelfUpdate({ branch } = {}) {
     queued: true,
     message:
       'بدأ تنزيل التحديث وتطبيقه — قد تنقطع اللوحة لدقيقة أو أكثر ثم تعود تلقائياً. لا تغلق الصفحة.',
+  };
+}
+
+export function triggerSelfRollback() {
+  if (!osApplyAvailable()) {
+    throw new Error(
+      'الرجوع للنسخة السابقة يتطلب الوصول للجهاز — نفّذ: cd /opt/streamrelay && sudo bash scripts/rollback-update.sh'
+    );
+  }
+
+  const previous = readPreviousCommit();
+  if (!previous?.commit) {
+    throw new Error('لا توجد نسخة سابقة محفوظة — يُحفظ commit تلقائياً قبل كل تحديث من اللوحة');
+  }
+
+  const lines = [
+    '# StreamRelay — طلب الرجوع للنسخة السابقة',
+    `REQUESTED_AT=${new Date().toISOString()}`,
+    `TARGET_COMMIT=${previous.commit}`,
+  ];
+
+  try {
+    fs.writeFileSync(rollbackRequestPath(), `${lines.join('\n')}\n`, { mode: 0o600 });
+  } catch (err) {
+    throw new Error(`تعذّر كتابة طلب الرجوع: ${err.message}`);
+  }
+
+  const queued = {
+    state: 'queued',
+    message: `جاري الرجوع إلى ${previous.label || previous.commit_short}...`,
+    commit: previous.label || previous.commit_short,
+    rollback: true,
+    at: new Date().toISOString(),
+  };
+  try {
+    fs.writeFileSync(statusPath(), JSON.stringify(queued), { mode: 0o600 });
+  } catch {
+    /* ignore */
+  }
+
+  log.info({ target: previous.commit }, 'Self-rollback request queued');
+
+  return {
+    ok: true,
+    queued: true,
+    previous_commit: previous,
+    message: `بدأ الرجوع إلى النسخة السابقة (${previous.label || previous.commit_short}) — قد تنقطع اللوحة ثم تعود.`,
   };
 }

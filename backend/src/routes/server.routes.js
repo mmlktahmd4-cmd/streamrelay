@@ -65,6 +65,16 @@ export default async function serverRoutes(fastify) {
     }
   });
 
+  fastify.post('/:id/rollback-remote', {
+    preHandler: [requireMinRole('admin')],
+  }, async (request, reply) => {
+    try {
+      return await remoteUpdateService.rollbackRemoteServer(request.params.id);
+    } catch (err) {
+      return reply.status(400).send({ error: err.message, log: err.log });
+    }
+  });
+
   fastify.put('/:id/ssh', {
     preHandler: [requireMinRole('admin'), validate(serverSshSchema)],
   }, async (request, reply) => {

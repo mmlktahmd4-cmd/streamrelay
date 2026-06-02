@@ -116,6 +116,34 @@ UNIT
 
   systemctl daemon-reload 2>/dev/null || true
   systemctl enable --now streamrelay-update.path 2>/dev/null || true
+
+  cat > /etc/systemd/system/streamrelay-rollback.service <<UNIT
+[Unit]
+Description=StreamRelay rollback panel to previous commit
+After=network.target docker.service
+
+[Service]
+Type=oneshot
+Environment=HOME=/root
+WorkingDirectory=${dir}
+ExecStart=/bin/bash ${dir}/scripts/apply-rollback-request.sh
+TimeoutStartSec=1800
+UNIT
+
+  cat > /etc/systemd/system/streamrelay-rollback.path <<UNIT
+[Unit]
+Description=StreamRelay watch .update-rollback-request file
+
+[Path]
+PathExists=${dir}/.update-rollback-request
+Unit=streamrelay-rollback.service
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+  systemctl daemon-reload 2>/dev/null || true
+  systemctl enable --now streamrelay-rollback.path 2>/dev/null || true
 }
 
 print_streamrelay_urls() {

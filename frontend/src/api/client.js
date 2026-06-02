@@ -239,6 +239,7 @@ export const saveSiteConfig = (data) => api.put('/site-config', data);
 export const getSelfUpdate = (force = false) =>
   api.get('/self-update', { params: force ? { force: '1' } : {}, timeout: 45000 });
 export const triggerSelfUpdate = () => api.post('/self-update', {});
+export const triggerSelfRollback = () => api.post('/self-update/rollback', {});
 export const getPublicBranding = () => axios.get(`${API_BASE}/branding`);
 
 // تطبيق الأندرويد (عام — لا يحتاج توكن)
@@ -258,6 +259,7 @@ export const suspendServer = (id) => api.post(`/servers/${id}/suspend`);
 export const unsuspendServer = (id) => api.post(`/servers/${id}/unsuspend`);
 export const syncRemoteServers = () => api.post('/servers/sync-remotes');
 export const updateRemoteServer = (id) => api.post(`/servers/${id}/update-remote`);
+export const rollbackRemoteServer = (id) => api.post(`/servers/${id}/rollback-remote`);
 export const saveServerSsh = (id, data) => api.put(`/servers/${id}/ssh`, data);
 
 // MikroTik

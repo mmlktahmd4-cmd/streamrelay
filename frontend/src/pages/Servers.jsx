@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { getServers, createServer, updateServer, deleteServer, provisionServer, suspendServer, unsuspendServer, syncRemoteServers, updateRemoteServer, saveServerSsh, getSelfUpdate, triggerSelfUpdate } from '../api/client';
+import { getServers, createServer, updateServer, deleteServer, provisionServer, suspendServer, unsuspendServer, syncRemoteServers, updateRemoteServer, rollbackRemoteServer, saveServerSsh, getSelfUpdate, triggerSelfUpdate, triggerSelfRollback } from '../api/client';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
-import { Server, Plus, Pencil, Trash2, RefreshCw, Activity, Link2, Settings2, PauseCircle, PlayCircle, CloudDownload, DownloadCloud, BellRing, ChevronDown, ChevronUp } from 'lucide-react';
+import { Server, Plus, Pencil, Trash2, RefreshCw, Activity, Link2, Settings2, PauseCircle, PlayCircle, CloudDownload, DownloadCloud, BellRing, ChevronDown, ChevronUp, Undo2 } from 'lucide-react';
 
 const roleLabels = {
   full: 'كامل (API + بث)',
@@ -68,7 +68,7 @@ function MetricLine({ label, value, percent, barColor }) {
   );
 }
 
-function ServerMetricsCard({ server, onEdit, onDelete, onSuspend, onUnsuspend, onUpdateRemote, onEditSsh, busy }) {
+function ServerMetricsCard({ server, onEdit, onDelete, onSuspend, onUnsuspend, onUpdateRemote, onRollbackRemote, onEditSsh, busy }) {
   const hs = server.host_stats;
   const statsAge = hs?.collected_at
     ? Math.round((Date.now() - new Date(hs.collected_at).getTime()) / 1000)
@@ -209,6 +209,17 @@ function ServerMetricsCard({ server, onEdit, onDelete, onSuspend, onUnsuspend, o
             <CloudDownload className="w-3.5 h-3.5" /> تحديث الآن
           </button>
         )}
+        {!server.is_local && server.metadata?.ssh_configured && server.is_active && (
+          <button
+            type="button"
+            className="btn btn-sm bg-violet-50 text-violet-800 border border-violet-200 hover:bg-violet-100"
+            disabled={busy}
+            onClick={() => onRollbackRemote(server)}
+            title="الرجوع لآخر نسخة قبل التحديث على هذا السيرفر"
+          >
+            <Undo2 className="w-3.5 h-3.5" /> رجوع للنسخة السابقة
+          </button>
+        )}
         {!server.is_local && server.is_active && (
           <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => onEditSsh(server)}>
             <Settings2 className="w-3.5 h-3.5" /> SSH
@@ -269,7 +280,7 @@ export default function ServersPage() {
       const { data } = await getSelfUpdate(force);
       setUpdateInfo(data);
       // أثناء التشغيل/الانتظار تابع التحديث بشكل متكرر
-      if (data?.last?.state === 'running' || data?.last?.state === 'queued' || data?.pending) {
+      if (data?.last?.state === 'running' || data?.last?.state === 'queued' || data?.pending || data?.rollback_pending) {
         setUpdating(true);
       } else {
         setUpdating(false);
@@ -287,6 +298,25 @@ export default function ServersPage() {
     } catch (err) {
       setUpdating(false);
       setMessage(err.response?.data?.error || 'تعذّر بدء التحديث');
+    }
+  };
+
+  const handleSelfRollback = async () => {
+    const prev = updateInfo?.previous_commit;
+    if (!prev?.commit_short && !prev?.label) {
+      alert('لا توجد نسخة سابقة محفوظة — يُحفظ commit تلقائياً قبل كل تحديث.');
+      return;
+    }
+    const label = prev.label || prev.commit_short;
+    if (!confirm(`الرجوع إلى النسخة السابقة؟\n\n${label}\n\nقد تنقطع اللوحة ثم تعود.`)) return;
+    setUpdating(true);
+    setMessage('');
+    try {
+      const { data } = await triggerSelfRollback();
+      setMessage(data.message || 'بدأ الرجوع للنسخة السابقة...');
+    } catch (err) {
+      setUpdating(false);
+      showMessage(err.response?.data?.error || 'تعذّر بدء الرجوع', 'error');
     }
   };
 
@@ -514,6 +544,20 @@ export default function ServersPage() {
     setSuspendBusy(null);
   };
 
+  const handleRollbackRemote = async (server) => {
+    if (!confirm(`الرجوع لآخر نسخة قبل التحديث على «${server.name}»؟\n\nيُعيد worker + nginx كما كان قبل آخر git pull.`)) return;
+    setSuspendBusy(server.id);
+    try {
+      const { data } = await rollbackRemoteServer(server.id);
+      showMessage(`تم الرجوع للنسخة السابقة على «${server.name}»`, 'success');
+      if (data.log) setProvisionLog(data.log);
+      loadServers();
+    } catch (err) {
+      showMessage(err.response?.data?.error || 'فشل الرجوع', 'error');
+    }
+    setSuspendBusy(null);
+  };
+
   const handleEditSsh = (server) => {
     setSshTarget(server);
     setSshForm({
@@ -637,12 +681,18 @@ export default function ServersPage() {
               {hasPendingUpdate && remoteUpdate?.latest_subject && (
                 <p className="text-slate-800 font-medium mt-1">{remoteUpdate.latest_subject}</p>
               )}
+              {updateInfo.previous_commit && (
+                <p className="text-xs text-violet-700 mt-1">
+                  النسخة قبل آخر تحديث: <span className="font-mono">{updateInfo.previous_commit.label || updateInfo.previous_commit.commit_short}</span>
+                </p>
+              )}
               {updateInfo.last && (
                 <p className={`mt-1 ${updateInfo.last.state === 'failed' ? 'text-red-600' : updateInfo.last.state === 'success' ? 'text-emerald-700' : 'text-amber-600'}`}>
-                  {updateInfo.last.state === 'running' && 'جاري التحديث الآن...'}
-                  {updateInfo.last.state === 'queued' && 'في قائمة الانتظار...'}
-                  {updateInfo.last.state === 'success' && `آخر تحديث ناجح: ${updateInfo.last.commit || ''}`}
-                  {updateInfo.last.state === 'failed' && `فشل آخر تحديث: ${updateInfo.last.message || ''}`}
+                  {updateInfo.last.rollback && updateInfo.last.state === 'queued' && 'جاري الرجوع للنسخة السابقة...'}
+                  {!updateInfo.last.rollback && updateInfo.last.state === 'running' && 'جاري التحديث الآن...'}
+                  {!updateInfo.last.rollback && updateInfo.last.state === 'queued' && 'في قائمة الانتظار...'}
+                  {updateInfo.last.state === 'success' && (updateInfo.last.rollback ? `تم الرجوع: ${updateInfo.last.commit || ''}` : `آخر تحديث ناجح: ${updateInfo.last.commit || ''}`)}
+                  {updateInfo.last.state === 'failed' && (updateInfo.last.rollback ? `فشل الرجوع: ${updateInfo.last.message || ''}` : `فشل آخر تحديث: ${updateInfo.last.message || ''}`)}
                 </p>
               )}
               {!updateInfo.os_apply_available && (
@@ -663,6 +713,17 @@ export default function ServersPage() {
               >
                 <RefreshCw className="w-3.5 h-3.5" /> تحقق
               </button>
+              {updateInfo?.previous_commit && updateInfo?.os_apply_available && (
+                <button
+                  type="button"
+                  className="btn btn-secondary text-xs py-1.5 text-violet-800 border-violet-200"
+                  disabled={updating}
+                  onClick={handleSelfRollback}
+                  title="الرجوع لآخر commit قبل التحديث"
+                >
+                  <Undo2 className="w-3.5 h-3.5" /> رجوع للنسخة السابقة
+                </button>
+              )}
               {hasPendingUpdate && (remoteUpdate?.commits?.length > 0) && (
                 <button
                   type="button"
@@ -902,6 +963,7 @@ export default function ServersPage() {
                 onSuspend={handleSuspend}
                 onUnsuspend={handleUnsuspend}
                 onUpdateRemote={handleUpdateRemote}
+                onRollbackRemote={handleRollbackRemote}
                 onEditSsh={handleEditSsh}
                 busy={suspendBusy === server.id}
               />

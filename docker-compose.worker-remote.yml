@@ -24,7 +24,6 @@ services:
       - hls_data:/var/www/hls
       - mpegts_data:/var/www/mpegts
       - logs_data:/var/log/streamrelay
-      - nginx_logs:/var/log/nginx:ro
     networks:
       - streamrelay
 
@@ -37,8 +36,6 @@ services:
     volumes:
       - hls_data:/var/www/hls:ro
       - ./nginx/conf.d/hls-worker.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./nginx/nginx-hls-worker-main.conf:/etc/nginx/nginx.conf:ro
-      - nginx_logs:/var/log/nginx
     depends_on:
       - worker
     networks:
@@ -48,7 +45,6 @@ volumes:
   hls_data:
   mpegts_data:
   logs_data:
-  nginx_logs:
 
 networks:
   streamrelay:

@@ -21,6 +21,16 @@ cd "$INSTALL_DIR"
 [ -f docker-compose.worker-remote.yml ] || fail "docker-compose.worker-remote.yml غير موجود"
 chmod +x scripts/*.sh 2>/dev/null || true
 
+PREV_FILE="${INSTALL_DIR}/.update-previous-commit"
+PREV_COMMIT="$(git rev-parse HEAD 2>/dev/null || echo "")"
+PREV_LABEL="$(git log -1 --oneline 2>/dev/null || echo "")"
+if [ -n "$PREV_COMMIT" ]; then
+  printf '{"commit":"%s","saved_at":"%s","label":"%s"}\n' \
+    "$PREV_COMMIT" "$(date -Iseconds)" "$PREV_LABEL" > "$PREV_FILE"
+  chmod 600 "$PREV_FILE" 2>/dev/null || true
+  log "Saved previous commit for rollback: $PREV_LABEL"
+fi
+
 # shellcheck source=lib/network.sh
 source "$INSTALL_DIR/scripts/lib/network.sh" 2>/dev/null || true
 

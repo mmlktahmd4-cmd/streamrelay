@@ -19,6 +19,12 @@ const UPDATE_SCRIPT_PATHS = [
   path.join(projectRoot, 'scripts/update-remote-worker.sh'),
 ];
 
+const ROLLBACK_SCRIPT_PATHS = [
+  '/opt/streamrelay-scripts/rollback-remote-worker.sh',
+  '/opt/streamrelay/scripts/rollback-remote-worker.sh',
+  path.join(projectRoot, 'scripts/rollback-remote-worker.sh'),
+];
+
 function isAutoUpdateEnabled(metadata) {
   if (metadata?.auto_remote_update === false) return false;
   return !!(metadata?.ssh_username && metadata?.ssh_password);
@@ -44,6 +50,18 @@ async function loadUpdateScript() {
     }
   }
   throw new Error('سكربت تحديث البعيد غير موجود — نفّذ safe-update.sh على السيرفر الرئيسي أولاً');
+}
+
+async function loadRollbackScript() {
+  for (const scriptPath of ROLLBACK_SCRIPT_PATHS) {
+    try {
+      const raw = await readFile(scriptPath, 'utf8');
+      return normalizeScript(raw);
+    } catch {
+      /* try next */
+    }
+  }
+  throw new Error('سكربت الرجوع للبعيد غير موجود — حدّث اللوحة الرئيسية أولاً');
 }
 
 export async function listServersEligibleForRemoteUpdate() {
@@ -117,12 +135,88 @@ export async function updateRemoteServer(serverId) {
     last_remote_update_status: status,
     last_remote_update_error: errorMessage || undefined,
     last_remote_update_commit: commitMatch?.[1] || undefined,
+    previous_remote_commit: meta?.last_remote_update_commit || meta?.previous_remote_commit || undefined,
     remote_update_log: logTail || undefined,
     remote_update_started_at: startedAt,
   });
 
   if (status === 'failed') {
     throw new Error(errorMessage || 'فشل تحديث السيرفر البعيد');
+  }
+
+  return {
+    server_id: serverId,
+    hostname: server.hostname,
+    status,
+    commit: commitMatch?.[1] || null,
+    log: logTail.slice(-2000),
+  };
+}
+
+export async function rollbackRemoteServer(serverId) {
+  const server = await serverService.getServerById(serverId);
+  if (!server) throw new Error('السيرفر غير موجود');
+  if (server.is_local) throw new Error('لا يمكن الرجوع للسيرفر المحلي عبر SSH');
+  if (!server.ip_address) throw new Error('لا يوجد IP للسيرفر');
+
+  const meta = await serverService.getServerMetadataRaw(serverId);
+  if (!isAutoUpdateEnabled(meta)) {
+    throw new Error(
+      'بيانات SSH غير محفوظة — أعد الربط التلقائي (SSH) أو أضف SSH من تعديل السيرفر'
+    );
+  }
+
+  const script = await loadRollbackScript();
+  const host = String(server.ip_address).trim();
+  const username = String(meta.ssh_username).trim();
+  const password = String(meta.ssh_password);
+  const port = Number(meta.ssh_port) || 22;
+
+  const env = {
+    INSTALL_DIR: '/opt/streamrelay',
+  };
+
+  log.info({ host, hostname: server.hostname }, 'Starting remote rollback via SSH');
+
+  const startedAt = new Date().toISOString();
+  let status = 'success';
+  let errorMessage = null;
+  let logTail = '';
+
+  try {
+    const { stdout, stderr } = await execRemoteScript({
+      host,
+      port,
+      username,
+      password,
+      script,
+      remotePath: '/tmp/streamrelay-rollback-remote.sh',
+      env,
+      timeoutMs: 900_000,
+    });
+    logTail = (stderr || stdout).trim().slice(-4000);
+  } catch (err) {
+    status = 'failed';
+    errorMessage = err.message;
+    logTail = err.message.slice(-4000);
+    log.warn({ host, hostname: server.hostname, err: err.message }, 'Remote rollback failed');
+  }
+
+  const finishedAt = new Date().toISOString();
+  const commitMatch = logTail.match(/commit=([^\s]+)/i)
+    || logTail.match(/after rollback:\s*(.+)$/im);
+
+  await serverService.patchServerMetadata(serverId, {
+    last_remote_rollback: finishedAt,
+    last_remote_rollback_status: status,
+    last_remote_rollback_error: errorMessage || undefined,
+    last_remote_rollback_commit: commitMatch?.[1] || undefined,
+    remote_rollback_log: logTail || undefined,
+    remote_rollback_started_at: startedAt,
+  });
+
+  if (status === 'failed') {
+    throw new Error(errorMessage || 'فشل الرجوع على السيرفر البعيد');
   }
 
   return {
