@@ -303,11 +303,7 @@ export default function ServersPage() {
 
   const handleSelfRollback = async () => {
     const prev = updateInfo?.previous_commit;
-    if (!prev?.commit_short && !prev?.label) {
-      alert('لا توجد نسخة سابقة محفوظة — يُحفظ commit تلقائياً قبل كل تحديث.');
-      return;
-    }
-    const label = prev.label || prev.commit_short;
+    const label = prev?.label || prev?.commit_short || 'النسخة السابقة';
     if (!confirm(`الرجوع إلى النسخة السابقة؟\n\n${label}\n\nقد تنقطع اللوحة ثم تعود.`)) return;
     setUpdating(true);
     setMessage('');
@@ -631,6 +627,24 @@ export default function ServersPage() {
               <BellRing className="w-4 h-4 animate-pulse" /> تحديث جديد — حدّث يدوياً
             </button>
           ) : null}
+          {updateInfo && (
+            <button
+              type="button"
+              className="btn bg-violet-600 text-white hover:bg-violet-700 border border-violet-700 disabled:opacity-50"
+              disabled={updating || !updateInfo.os_apply_available}
+              onClick={handleSelfRollback}
+              title={
+                !updateInfo.os_apply_available
+                  ? 'يتطلب volume المشروع + docker.sock — أو: sudo bash scripts/rollback-update.sh'
+                  : updateInfo.previous_commit
+                    ? `الرجوع إلى: ${updateInfo.previous_commit.label || updateInfo.previous_commit.commit_short}`
+                    : 'الرجوع لآخر commit قبل التحديث (git reflog)'
+              }
+            >
+              <Undo2 className="w-4 h-4" />
+              رجوع للنسخة السابقة
+            </button>
+          )}
           <button type="button" className="btn btn-secondary" disabled={saving} onClick={handleSyncAllRemotes} title="git pull + إعادة بناء worker على السيرفر البعيد (SSH) — لا يحدّث اللوحة الرئيسية">
             <CloudDownload className="w-4 h-4" /> مزامنة GitHub للسيرفرات البعيدة
           </button>
@@ -713,17 +727,15 @@ export default function ServersPage() {
               >
                 <RefreshCw className="w-3.5 h-3.5" /> تحقق
               </button>
-              {updateInfo?.previous_commit && updateInfo?.os_apply_available && (
-                <button
-                  type="button"
-                  className="btn btn-secondary text-xs py-1.5 text-violet-800 border-violet-200"
-                  disabled={updating}
-                  onClick={handleSelfRollback}
-                  title="الرجوع لآخر commit قبل التحديث"
-                >
-                  <Undo2 className="w-3.5 h-3.5" /> رجوع للنسخة السابقة
-                </button>
-              )}
+              <button
+                type="button"
+                className="btn btn-secondary text-xs py-1.5 text-violet-800 border-violet-200 disabled:opacity-50"
+                disabled={updating || !updateInfo?.os_apply_available}
+                onClick={handleSelfRollback}
+                title={updateInfo?.os_apply_available ? 'الرجوع لآخر commit قبل التحديث' : 'يتطلب volume المشروع + docker.sock'}
+              >
+                <Undo2 className="w-3.5 h-3.5" /> رجوع للنسخة السابقة
+              </button>
               {hasPendingUpdate && (remoteUpdate?.commits?.length > 0) && (
                 <button
                   type="button"

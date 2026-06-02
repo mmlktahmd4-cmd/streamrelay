@@ -13,17 +13,21 @@ command -v docker &>/dev/null || fail "docker غير مثبت"
 docker compose version &>/dev/null 2>&1 || fail "docker compose غير متوفر"
 
 [ -d "$INSTALL_DIR/.git" ] || fail "المشروع غير موجود في $INSTALL_DIR"
-[ -f "$PREV_FILE" ] || fail "لا توجد نسخة سابقة — حدّث السيرفر مرة واحدة أولاً ليُحفظ commit"
 
 cd "$INSTALL_DIR"
 [ -f docker-compose.worker-remote.yml ] || fail "docker-compose.worker-remote.yml غير موجود"
 
 PREV_COMMIT=""
-if command -v python3 >/dev/null 2>&1; then
-  PREV_COMMIT="$(python3 -c "import json; d=json.load(open('$PREV_FILE')); print(d.get('commit',''))" 2>/dev/null || true)"
+if [ -f "$PREV_FILE" ]; then
+  if command -v python3 >/dev/null 2>&1; then
+    PREV_COMMIT="$(python3 -c "import json; d=json.load(open('$PREV_FILE')); print(d.get('commit',''))" 2>/dev/null || true)"
+  fi
+  [ -z "$PREV_COMMIT" ] && PREV_COMMIT="$(grep -o '"commit"[[:space:]]*:[[:space:]]*"[^"]*"' "$PREV_FILE" 2>/dev/null | head -1 | sed 's/.*"\([^"]*\)"$/\1/')"
 fi
-[ -z "$PREV_COMMIT" ] && PREV_COMMIT="$(grep -o '"commit"[[:space:]]*:[[:space:]]*"[^"]*"' "$PREV_FILE" | head -1 | sed 's/.*"\([^"]*\)"$/\1/')"
-[ -n "$PREV_COMMIT" ] || fail "تعذّر قراءة commit السابق"
+if [ -z "$PREV_COMMIT" ]; then
+  PREV_COMMIT="$(git rev-parse ORIG_HEAD 2>/dev/null || git rev-parse 'HEAD@{1}' 2>/dev/null || git rev-parse HEAD~1 2>/dev/null || echo "")"
+fi
+[ -n "$PREV_COMMIT" ] || fail "لا توجد نسخة سابقة — نفّذ تحديثاً من اللوحة أولاً"
 
 log "Rolling back to $PREV_COMMIT ..."
 git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true

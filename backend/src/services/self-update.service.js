@@ -32,7 +32,7 @@ function rollbackRequestPath() {
   return path.join(getInstallDir(), '.update-rollback-request');
 }
 
-function readPreviousCommit() {
+function readPreviousCommitFromFile() {
   try {
     const raw = JSON.parse(fs.readFileSync(previousCommitPath(), 'utf8'));
     const commit = String(raw?.commit || '').trim();
@@ -42,10 +42,69 @@ function readPreviousCommit() {
       commit_short: commit.slice(0, 7),
       label: raw?.label || commit.slice(0, 7),
       saved_at: raw?.saved_at || null,
+      source: 'file',
     };
   } catch {
     return null;
   }
+}
+
+async function gitCommitLabel(installDir, commit) {
+  try {
+    const { stdout } = await execFileAsync(
+      'git',
+      ['-C', installDir, 'log', '-1', '--oneline', commit],
+      { timeout: 8000, maxBuffer: 1024 * 64 }
+    );
+    return stdout.trim() || commit.slice(0, 7);
+  } catch {
+    return commit.slice(0, 7);
+  }
+}
+
+async function resolvePreviousCommit() {
+  const fromFile = readPreviousCommitFromFile();
+  if (fromFile) return fromFile;
+
+  const installDir = getInstallDir();
+  const current = readCurrentCommitFull();
+  if (!current) return null;
+
+  const tryRef = async (ref, source) => {
+    try {
+      const { stdout } = await execFileAsync(
+        'git',
+        ['-C', installDir, 'rev-parse', ref],
+        { timeout: 8000, maxBuffer: 1024 * 64 }
+      );
+      const commit = stdout.trim();
+      if (!commit || commit.length < 7 || shasMatch(commit, current)) return null;
+      return {
+        commit,
+        commit_short: commit.slice(0, 7),
+        label: await gitCommitLabel(installDir, commit),
+        saved_at: null,
+        source,
+      };
+    } catch {
+      return null;
+    }
+  };
+
+  for (const [ref, source] of [
+    ['ORIG_HEAD', 'ORIG_HEAD'],
+    ['HEAD@{1}', 'reflog'],
+    ['HEAD~1', 'parent'],
+  ]) {
+    const resolved = await tryRef(ref, source);
+    if (resolved) return resolved;
+  }
+
+  return null;
+}
+
+function readPreviousCommit() {
+  return readPreviousCommitFromFile();
 }
 
 function readHeadRef() {
@@ -347,11 +406,13 @@ export async function getUpdateStatus({ force = false } = {}) {
   }
 
   const remote = await checkRemoteUpdates({ force });
+  const previousCommit = await resolvePreviousCommit();
 
   return {
     current_commit: readCurrentCommit(),
     current_commit_full: readCurrentCommitFull(),
-    previous_commit: readPreviousCommit(),
+    previous_commit: previousCommit,
+    rollback_available: osApplyAvailable(),
     pending,
     rollback_pending: (() => {
       try { return fs.existsSync(rollbackRequestPath()); } catch { return false; }
@@ -410,16 +471,16 @@ export function triggerSelfUpdate({ branch } = {}) {
   };
 }
 
-export function triggerSelfRollback() {
+export async function triggerSelfRollback() {
   if (!osApplyAvailable()) {
     throw new Error(
       'الرجوع للنسخة السابقة يتطلب الوصول للجهاز — نفّذ: cd /opt/streamrelay && sudo bash scripts/rollback-update.sh'
     );
   }
 
-  const previous = readPreviousCommit();
+  const previous = await resolvePreviousCommit();
   if (!previous?.commit) {
-    throw new Error('لا توجد نسخة سابقة محفوظة — يُحفظ commit تلقائياً قبل كل تحديث من اللوحة');
+    throw new Error('لا توجد نسخة سابقة — نفّذ تحديثاً واحداً من اللوحة أولاً أو استخدم git reset يدوياً على السيرفر');
   }
 
   const lines = [
