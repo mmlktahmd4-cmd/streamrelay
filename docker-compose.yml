@@ -27,16 +27,26 @@ services:
     image: redis:7-alpine
     container_name: sr-redis
     restart: unless-stopped
-    command: redis-server --appendonly yes --bind 0.0.0.0 ${REDIS_PASSWORD:+--requirepass $REDIS_PASSWORD}
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        if [ -n "$$REDIS_PASSWORD" ]; then
+          exec redis-server --appendonly yes --bind 0.0.0.0 --requirepass "$$REDIS_PASSWORD"
+        else
+          exec redis-server --appendonly yes --bind 0.0.0.0
+        fi
     volumes:
       - redis_data:/data
     ports:
       - "${REDIS_PUBLISH:-127.0.0.1:6379}:6379"
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli ${REDIS_PASSWORD:+-a \"$REDIS_PASSWORD\"} ping | grep -q PONG"]
-      interval: 10s
+      test: ["CMD-SHELL", "if [ -n \"$$REDIS_PASSWORD\" ]; then redis-cli -a \"$$REDIS_PASSWORD\" ping --no-auth-warning; else redis-cli ping; fi"]
+      start_period: 30s
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 8
     networks:
       - streamrelay
 

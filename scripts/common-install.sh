@@ -50,6 +50,45 @@ wait_for_api() {
   return 1
 }
 
+stop_host_db_redis_conflicts() {
+  systemctl stop redis-server redis postgresql 2>/dev/null || true
+}
+
+redis_ping_ok() {
+  install_common_dir
+  local rp
+  rp="$(grep '^REDIS_PASSWORD=' .env 2>/dev/null | cut -d= -f2- || true)"
+  if [ -n "$rp" ]; then
+    docker compose exec -T redis redis-cli -a "$rp" ping --no-auth-warning 2>/dev/null | grep -q PONG
+  else
+    docker compose exec -T redis redis-cli ping 2>/dev/null | grep -q PONG
+  fi
+}
+
+wait_for_redis() {
+  local attempts="${1:-40}"
+  local delay="${2:-2}"
+  install_common_dir
+  for _ in $(seq 1 "$attempts"); do
+    if redis_ping_ok; then
+      return 0
+    fi
+    sleep "$delay"
+  done
+  return 1
+}
+
+reset_redis_volume() {
+  install_common_dir
+  docker compose stop redis 2>/dev/null || true
+  docker compose rm -f redis 2>/dev/null || true
+  local vol
+  vol="$(docker volume ls -q | grep -E 'redis_data$' | head -1 || true)"
+  if [ -n "$vol" ]; then
+    docker volume rm "$vol" 2>/dev/null || true
+  fi
+}
+
 # وحدة systemd تراقب .network-request وتطبّقها على الجهاز (root) — تسمح بتغيير IP من اللوحة
 install_network_apply_unit() {
   local dir="${INSTALL_DIR:-/opt/streamrelay}"

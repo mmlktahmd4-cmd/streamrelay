@@ -188,7 +188,51 @@ cd /opt/streamrelay && docker compose up -d --force-recreate nginx
 
 ---
 
-## 8) API unhealthy
+## 8) sr-redis unhealthy / dependency redis failed to start
+
+**الخطأ:**
+```
+✘ Container sr-redis    Error dependency redis failed to start
+dependency failed to start: container sr-redis is unhealthy
+```
+
+**الأسباب الشائعة:**
+| السبب | الحل |
+|--------|------|
+| `redis-server` على Ubuntu يستخدم 6379 | `sudo systemctl stop redis-server` |
+| volume Redis تالف من تثبيت سابق | إعادة إنشاء volume |
+| healthcheck قديم في docker-compose.yml | `git pull` ثم إعادة التشغيل |
+
+**الحل السريع (أمر واحد):**
+```bash
+cd /opt/streamrelay
+sudo git pull origin main
+sudo bash scripts/fix-redis.sh
+```
+
+**يدوياً:**
+```bash
+cd /opt/streamrelay
+sudo systemctl stop redis-server redis 2>/dev/null || true
+sudo git pull origin main
+docker compose stop redis
+docker compose rm -f redis
+docker volume ls -q | grep redis_data | xargs -r docker volume rm
+docker compose up -d postgres redis
+docker compose exec -T redis redis-cli ping
+docker compose up -d
+```
+
+**تحقق:**
+```bash
+docker compose ps redis
+docker compose logs redis --tail 30
+ss -tlnp | grep 6379
+```
+
+---
+
+## 9) API unhealthy
 
 ```bash
 docker compose logs api --tail 50
@@ -197,7 +241,7 @@ docker compose exec api wget -qO- http://127.0.0.1:3000/api/health
 
 ---
 
-## 9) إعادة بناء كامل
+## 10) إعادة بناء كامل
 
 ```bash
 cd /opt/streamrelay
@@ -208,7 +252,7 @@ docker compose up -d
 
 ---
 
-## 10) تحديث آمن بدون ضياع الإعدادات
+## 11) تحديث آمن بدون ضياع الإعدادات
 
 ```bash
 cd /opt/streamrelay
@@ -219,7 +263,7 @@ sudo bash scripts/safe-update.sh
 
 ---
 
-## 11) install-preflight يفشل رغم أنك root / Docker غير مثبت
+## 12) install-preflight يفشل رغم أنك root / Docker غير مثبت
 
 **الأعراض:**
 ```
@@ -241,7 +285,7 @@ sudo bash scripts/install-preflight.sh
 
 ---
 
-## 12) أوامر مفيدة
+## 13) أوامر مفيدة
 
 ```bash
 cd /opt/streamrelay

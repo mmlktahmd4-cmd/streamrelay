@@ -45,7 +45,7 @@ if [ -d "$INSTALL_DIR/.git" ] && [ "${STREAMRELAY_REPO_SYNCED:-}" != "1" ]; then
   exec bash "$INSTALL_DIR/scripts/ubuntu-quick-install.sh" "$@"
 fi
 
-INSTALL_SCRIPT_VERSION="2026.06.14-1"
+INSTALL_SCRIPT_VERSION="2026.06.14-2"
 chmod +x "${SCRIPT_DIR}"/*.sh 2>/dev/null || true
 
 load_network_lib() {
@@ -319,8 +319,37 @@ build_frontend
 # ── 5. بناء وتشغيل Docker ──
 echo "[6/8] بناء الحاويات (قد يستغرق 5–15 دقيقة)..."
 export STREAMRELAY_HTTP_PORT="${HTTP_PORT}"
+echo "      إيقاف Redis/PostgreSQL على المضيف (تفادي تعارض 6379/5432)..."
+if declare -F stop_host_db_redis_conflicts >/dev/null 2>&1; then
+  stop_host_db_redis_conflicts
+else
+  systemctl stop redis-server redis postgresql 2>/dev/null || true
+fi
 docker compose pull postgres redis nginx 2>/dev/null || true
 docker compose build --parallel
+echo "      تشغيل postgres و redis..."
+docker compose up -d postgres redis
+if declare -F wait_for_redis >/dev/null 2>&1; then
+  if ! wait_for_redis 40 2; then
+    echo "      Redis غير جاهز — إعادة إنشاء volume (تثبيت سابق أو بيانات تالفة)..."
+    if declare -F reset_redis_volume >/dev/null 2>&1; then
+      reset_redis_volume
+    else
+      docker compose stop redis 2>/dev/null || true
+      docker compose rm -f redis 2>/dev/null || true
+      docker volume ls -q | grep -E 'redis_data$' | head -1 | xargs -r docker volume rm 2>/dev/null || true
+    fi
+    docker compose up -d postgres redis
+    if ! wait_for_redis 40 2; then
+      echo "خطأ: sr-redis لا يزال unhealthy — نفّذ:"
+      echo "  cd $INSTALL_DIR && sudo bash scripts/fix-redis.sh"
+      docker compose logs redis --tail 40 2>&1 || true
+      exit 1
+    fi
+  fi
+else
+  sleep 10
+fi
 docker compose up -d
 
 # ── 6. انتظار جاهزية API ──
