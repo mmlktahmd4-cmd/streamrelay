@@ -28,6 +28,9 @@ fi
 echo "=== تنزيل تطبيق الأندرويد (إن توفّر إصدار) ==="
 bash "${SCRIPT_DIR}/fetch-app-apk.sh" "$INSTALL_DIR" || true
 
+echo "=== التأكد من DNS الخاص بـ Docker (يمنع فشل سحب الصور) ==="
+ensure_docker_dns || true
+
 echo "=== بناء الواجهة ==="
 build_frontend
 

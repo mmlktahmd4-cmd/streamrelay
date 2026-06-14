@@ -54,6 +54,51 @@ stop_host_db_redis_conflicts() {
   systemctl stop redis-server redis postgresql 2>/dev/null || true
 }
 
+# يصلح فشل docker build/pull بسبب DNS: "lookup registry-1.docker.io on 127.0.0.x"
+# السبب: resolv.conf على المضيف يشير لمحلّل محلي (loopback) غير قابل للوصول من داخل شبكة الحاوية.
+# الحل: إضافة DNS عام في /etc/docker/daemon.json ثم إعادة تشغيل Docker.
+ensure_docker_dns() {
+  # نتدخل فقط إذا كان resolv.conf يستخدم محلّلاً محلياً (127.x)
+  if ! grep -Eq '^[[:space:]]*nameserver[[:space:]]+127\.' /etc/resolv.conf 2>/dev/null; then
+    return 0
+  fi
+
+  local cfg="/etc/docker/daemon.json"
+  if [ -f "$cfg" ] && grep -q '"dns"' "$cfg" 2>/dev/null; then
+    return 0
+  fi
+
+  echo "      ضبط DNS لـ Docker (resolv.conf محلي على 127.x)..."
+  mkdir -p /etc/docker
+
+  if [ -f "$cfg" ] && command -v python3 >/dev/null 2>&1; then
+    python3 - "$cfg" <<'PY' || true
+import json, sys
+p = sys.argv[1]
+try:
+    with open(p) as f:
+        d = json.load(f)
+    if not isinstance(d, dict):
+        d = {}
+except Exception:
+    d = {}
+d.setdefault("dns", ["8.8.8.8", "1.1.1.1"])
+with open(p, "w") as f:
+    json.dump(d, f, indent=2)
+PY
+  else
+    cat > "$cfg" <<'JSON'
+{
+  "dns": ["8.8.8.8", "1.1.1.1"]
+}
+JSON
+  fi
+
+  echo "      إعادة تشغيل Docker لتطبيق DNS..."
+  systemctl restart docker 2>/dev/null || service docker restart 2>/dev/null || true
+  sleep 4
+}
+
 redis_ping_ok() {
   install_common_dir
   local rp
