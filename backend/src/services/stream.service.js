@@ -218,9 +218,11 @@ function buildFFmpegArgs(channel, sourceOverride = null) {
       '-multiple_requests', '1',
     );
 
-    // allowed_extensions خيار خاص بـ HLS demuxer فقط؛ نطبّقه على hls و m3u فقط
-    // حتى لا يرفض FFmpeg المقاطع. لا نطبّقه على http العام (Xtream قد يكون mpegts).
-    if (inputType === 'm3u' || inputType === 'hls') {
+    // allowed_extensions خيار خاص بـ HLS demuxer فقط. كثير من روابط Xtream المصنّفة
+    // m3u/hls هي فعلياً mpegts بلا امتداد، وعندها يختار FFmpeg مُفكّك mpegts فيرفض
+    // الخيار بخطأ قاتل: "Option allowed_extensions not found". لذلك نطبّقه فقط عندما
+    // يكون الرابط قائمة تشغيل .m3u8 حقيقية (حينها يُستخدم مُفكّك hls فعلاً).
+    if (sourceLower.includes('.m3u8')) {
       args.push('-allowed_extensions', 'ALL');
     }
 
