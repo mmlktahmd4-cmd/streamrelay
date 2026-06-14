@@ -219,7 +219,29 @@ sudo bash scripts/safe-update.sh
 
 ---
 
-## 11) أوامر مفيدة
+## 11) install-preflight يفشل رغم أنك root / Docker غير مثبت
+
+**الأعراض:**
+```
+[FAIL] root أو sudo
+[FAIL] docker (اختياري)
+[FAIL] docker-compose.yml
+```
+
+**السبب:** إصدارات قديمة كانت تفشل فحص root عند `sudo`، وتعتبر Docker إلزامياً رغم أن التثبيت يثبّته لاحقاً.
+
+**الحل:**
+```bash
+cd /opt/streamrelay
+sudo git pull origin main
+grep -E '^INSTALL_SCRIPT_VERSION=' scripts/ubuntu-quick-install.sh
+# يجب أن يظهر 2026.06.14-1 أو أحدث
+sudo bash scripts/install-preflight.sh
+```
+
+---
+
+## 12) أوامر مفيدة
 
 ```bash
 cd /opt/streamrelay

@@ -53,14 +53,26 @@ else
   checks_fail=$((checks_fail + 1))
 fi
 
-check "root أو sudo" "$([ "$EUID" -eq 0 ] || command -v sudo &>/dev/null && echo 1 || echo 0)"
+if [ "$EUID" -eq 0 ] || command -v sudo &>/dev/null; then
+  check "root أو sudo" "1"
+else
+  check "root أو sudo" "0"
+fi
 check "curl" "$(command -v curl &>/dev/null && echo 1 || echo 0)"
 check "git" "$(command -v git &>/dev/null && echo 1 || echo 0)"
 check "python3" "$(command -v python3 &>/dev/null && echo 1 || echo 0)"
-check "docker (اختياري)" "$(command -v docker &>/dev/null && echo 1 || echo 0)"
+
+if command -v docker &>/dev/null; then
+  echo "  [OK]   docker"
+  checks_ok=$((checks_ok + 1))
+else
+  echo "  [SKIP] docker — سيُثبَّت مع ubuntu-quick-install.sh"
+fi
 
 if [ -f "$ROOT/docker-compose.yml" ]; then
-  if (cd "$ROOT" && docker compose config -q &>/dev/null); then
+  if ! command -v docker &>/dev/null; then
+    echo "  [SKIP] docker-compose.yml — Docker غير مثبت بعد"
+  elif (cd "$ROOT" && docker compose config -q &>/dev/null); then
     check "docker-compose.yml" "1"
   else
     check "docker-compose.yml" "0"
