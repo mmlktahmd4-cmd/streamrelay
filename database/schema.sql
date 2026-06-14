@@ -16,6 +16,7 @@ CREATE TYPE log_level AS ENUM ('debug', 'info', 'warn', 'error');
 CREATE TABLE users (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     username        VARCHAR(64) UNIQUE NOT NULL,
+    full_name       VARCHAR(120),
     email           VARCHAR(255) UNIQUE,
     password_hash   VARCHAR(255) NOT NULL,
     role            user_role NOT NULL DEFAULT 'viewer',
@@ -25,6 +26,7 @@ CREATE TABLE users (
     expires_at      TIMESTAMPTZ,
     last_login      TIMESTAMPTZ,
     login_session_id VARCHAR(64),
+    login_session_ids TEXT[] NOT NULL DEFAULT '{}',
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

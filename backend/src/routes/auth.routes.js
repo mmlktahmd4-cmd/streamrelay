@@ -78,7 +78,7 @@ export default async function authRoutes(fastify) {
 
     let sessionId = null;
     if (user.role === 'viewer') {
-      sessionId = await authService.rotateLoginSession(user.id);
+      sessionId = await authService.rotateLoginSession(user.id, user.max_connections);
     }
 
     const accessPayload = { id: user.id, username: user.username, role: user.role };

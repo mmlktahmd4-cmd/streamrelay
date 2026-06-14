@@ -36,35 +36,54 @@ export async function updateLastLogin(userId) {
   await query('UPDATE users SET last_login = NOW() WHERE id = $1', [userId]);
 }
 
-/** جلسة دخول واحدة للمشاهد — جهاز جديد يلغي الجلسة السابقة */
-export async function rotateLoginSession(userId) {
+/**
+ * جلسات دخول المشاهد — يُسمح بعدد أجهزة يساوي max_connections.
+ * عند تجاوز العدد، يُحذف أقدم جهاز تلقائياً (الأقدم يخرج).
+ */
+export async function rotateLoginSession(userId, maxConnections = 1) {
   const sessionId = randomUUID();
-  await query('UPDATE users SET login_session_id = $1 WHERE id = $2', [sessionId, userId]);
+  const limit = Math.max(1, Number(maxConnections) || 1);
+
+  const res = await query('SELECT login_session_ids FROM users WHERE id = $1', [userId]);
+  const current = Array.isArray(res.rows[0]?.login_session_ids) ? res.rows[0].login_session_ids : [];
+  // أضف الجلسة الجديدة واحتفظ بآخر `limit` جلسة فقط
+  const next = [...current, sessionId].slice(-limit);
+
+  await query(
+    'UPDATE users SET login_session_ids = $1, login_session_id = $2 WHERE id = $3',
+    [next, sessionId, userId]
+  );
   return sessionId;
 }
 
 export async function isLoginSessionValid(userId, sessionId) {
   if (!userId || !sessionId) return false;
   const result = await query(
-    'SELECT 1 FROM users WHERE id = $1 AND login_session_id = $2 AND is_active = true',
+    `SELECT 1 FROM users
+       WHERE id = $1 AND is_active = true
+         AND ($2 = ANY(COALESCE(login_session_ids, '{}')) OR login_session_id = $2)`,
     [userId, sessionId]
   );
   return result.rows.length > 0;
 }
 
 export async function clearLoginSession(userId) {
-  await query('UPDATE users SET login_session_id = NULL WHERE id = $1', [userId]);
+  await query(
+    `UPDATE users SET login_session_id = NULL, login_session_ids = '{}' WHERE id = $1`,
+    [userId]
+  );
 }
 
-export async function createUser({ username, password, role = 'viewer', max_connections, maxConnections, expires_at }) {
+export async function createUser({ username, password, full_name, role = 'viewer', max_connections, maxConnections, expires_at }) {
   const passwordHash = await hashPassword(password);
   let connections = max_connections ?? maxConnections ?? 1;
-  if (role === 'viewer') connections = 1;
+  if (!Number.isInteger(connections) || connections < 1) connections = 1;
+  const ownerName = (typeof full_name === 'string' && full_name.trim()) ? full_name.trim() : null;
   const result = await query(
-    `INSERT INTO users (username, password_hash, role, max_connections, expires_at)
-     VALUES ($1, $2, $3, $4, $5)
-     RETURNING id, username, role, is_active, max_connections, expires_at, created_at`,
-    [username, passwordHash, role, connections, expires_at || null]
+    `INSERT INTO users (username, password_hash, full_name, role, max_connections, expires_at)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id, username, full_name, role, is_active, max_connections, expires_at, created_at`,
+    [username, passwordHash, ownerName, role, connections, expires_at || null]
   );
   return result.rows[0];
 }
@@ -73,7 +92,7 @@ export async function listUsers({ page = 1, limit = 20 } = {}) {
   const offset = (page - 1) * limit;
   const [users, count] = await Promise.all([
     query(
-      `SELECT id, username, role, is_active, max_connections, expires_at, last_login, created_at
+      `SELECT id, username, full_name, role, is_active, max_connections, expires_at, last_login, created_at
        FROM users ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
       [limit, offset]
     ),
@@ -91,12 +110,20 @@ export async function updateUser(id, fields) {
   const existing = await findUserById(id);
   if (!existing) return null;
 
-  const role = fields.role ?? existing.role;
-  if (role === 'viewer') {
-    fields.max_connections = 1;
+  // طبّع اسم صاحب الحساب: فارغ ← null
+  if (Object.prototype.hasOwnProperty.call(fields, 'full_name')) {
+    fields.full_name = (typeof fields.full_name === 'string' && fields.full_name.trim())
+      ? fields.full_name.trim()
+      : null;
   }
 
-  const allowed = ['role', 'is_active', 'max_connections', 'allowed_ips', 'expires_at'];
+  // اضبط عدد الأجهزة (لا أقل من 1) — يُسمح للمشاهد بأكثر من جهاز الآن
+  if (Object.prototype.hasOwnProperty.call(fields, 'max_connections')) {
+    const n = Number(fields.max_connections);
+    fields.max_connections = (Number.isInteger(n) && n >= 1) ? n : 1;
+  }
+
+  const allowed = ['full_name', 'role', 'is_active', 'max_connections', 'allowed_ips', 'expires_at'];
   const sets = [];
   const values = [];
   let idx = 1;
@@ -117,14 +144,27 @@ export async function updateUser(id, fields) {
 
   values.push(id);
   const result = await query(
-    `UPDATE users SET ${sets.join(', ')} WHERE id = $${idx} RETURNING id, username, role, is_active, expires_at, max_connections`,
+    `UPDATE users SET ${sets.join(', ')} WHERE id = $${idx} RETURNING id, username, full_name, role, is_active, expires_at, max_connections`,
     values
   );
   return result.rows[0] || null;
 }
 
 export async function deleteUser(id) {
-  await query('DELETE FROM users WHERE id = $1 AND role != $2', [id, 'admin']);
+  const target = await findUserById(id);
+  if (!target) return;
+
+  // يُسمح بحذف المدير، لكن يجب إبقاء مدير واحد على الأقل لتفادي قفل اللوحة
+  if (target.role === 'admin') {
+    const { rows } = await query("SELECT COUNT(*)::int AS c FROM users WHERE role = 'admin'");
+    if ((rows[0]?.c || 0) <= 1) {
+      const err = new Error('لا يمكن حذف آخر حساب مدير — أنشئ مديراً آخر أولاً');
+      err.statusCode = 400;
+      throw err;
+    }
+  }
+
+  await query('DELETE FROM users WHERE id = $1', [id]);
 }
 
 export async function createApiToken(userId, name, scopes = [], expiresAt = null) {

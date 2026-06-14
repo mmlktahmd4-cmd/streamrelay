@@ -66,6 +66,14 @@ const PATCHES = [
     `,
     optional: true,
   },
+  {
+    id: '010_users_fullname_multidevice',
+    sql: `
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name VARCHAR(120);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS login_session_ids TEXT[] NOT NULL DEFAULT '{}';
+    `,
+    optional: true,
+  },
 ];
 
 export async function runSchemaPatches() {

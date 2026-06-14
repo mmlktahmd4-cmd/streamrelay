@@ -62,29 +62,25 @@ const expiresAtField = z.preprocess(
 
 export const createUserSchema = z.object({
   username: z.string().min(3).max(64).regex(/^[a-zA-Z0-9_-]+$/),
+  full_name: z.string().max(120).optional().or(z.literal('')),
   password: z.string().min(6).max(128),
   role: z.enum(['admin', 'operator', 'viewer']).default('viewer'),
+  // عدد الأجهزة المسموح بها للحساب (يمكن أن يدخل بأكثر من جهاز/مستخدم)
   max_connections: z.number().int().min(1).max(100).default(1),
   expires_at: expiresAtField,
 }).superRefine((data, ctx) => {
   if (data.role === 'viewer' && !data.expires_at) {
     ctx.addIssue({ code: 'custom', message: 'تاريخ الانتهاء مطلوب للمشاهدين', path: ['expires_at'] });
   }
-  if (data.role === 'viewer' && data.max_connections > 1) {
-    ctx.addIssue({ code: 'custom', message: 'المشاهد مسموح له بجهاز واحد فقط', path: ['max_connections'] });
-  }
 });
 
 export const updateUserSchema = z.object({
+  full_name: z.string().max(120).optional().or(z.literal('')),
   password: z.string().min(6).max(128).optional(),
   role: z.enum(['admin', 'operator', 'viewer']).optional(),
   is_active: z.boolean().optional(),
   max_connections: z.number().int().min(1).max(100).optional(),
   expires_at: expiresAtField.nullable(),
-}).superRefine((data, ctx) => {
-  if (data.max_connections && data.max_connections > 1 && data.role === 'viewer') {
-    ctx.addIssue({ code: 'custom', message: 'المشاهد مسموح له بجهاز واحد فقط', path: ['max_connections'] });
-  }
 });
 
 export const siteConfigSchema = z.object({

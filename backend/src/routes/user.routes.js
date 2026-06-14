@@ -29,8 +29,16 @@ export default async function userRoutes(fastify) {
   });
 
   fastify.delete('/:id', async (request, reply) => {
-    await authService.deleteUser(request.params.id);
-    reply.status(204);
+    if (request.params.id === request.user.id) {
+      return reply.status(400).send({ error: 'لا يمكنك حذف حسابك الحالي — استخدم حساب مدير آخر' });
+    }
+    try {
+      await authService.deleteUser(request.params.id);
+    } catch (err) {
+      return reply.status(err.statusCode || 500).send({ error: err.message || 'تعذّر حذف الحساب' });
+    }
+    await authService.logAudit(request.user.id, 'delete', 'user', request.params.id, request.ip, request.headers['user-agent']);
+    return reply.status(204).send();
   });
 
   // API Tokens
