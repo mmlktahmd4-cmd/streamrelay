@@ -38,6 +38,60 @@ function refreshAccessTokenOnce() {
   return refreshPromise;
 }
 
+function getAccessTokenExpiryMs() {
+  try {
+    const token = localStorage.getItem('access_token');
+    if (!token) return 0;
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return Number(payload.exp) * 1000;
+  } catch {
+    return 0;
+  }
+}
+
+/** يجدّد التوكن قبل انتهائه — ضروري لرفع الأفلام الكبيرة (>15 دقيقة) */
+async function ensureFreshAccessToken(bufferMs = 120_000) {
+  const expires = getAccessTokenExpiryMs();
+  if (!expires || Date.now() < expires - bufferMs) return;
+  await refreshAccessTokenOnce();
+}
+
+function isChunkAlreadyReceivedError(err) {
+  const msg = String(err?.response?.data?.error || '');
+  return err?.response?.status === 400 && /يُتوقع القطعة \d+ وليس/.test(msg);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function postUploadChunk(url, form, uploadConfig, onUploadProgress) {
+  const maxAttempts = 4;
+  let lastErr;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    await ensureFreshAccessToken();
+    try {
+      return await api.post(url, form, {
+        ...uploadConfig,
+        onUploadProgress,
+      });
+    } catch (err) {
+      lastErr = err;
+      if (isChunkAlreadyReceivedError(err)) return { data: { already_received: true } };
+
+      const status = err?.response?.status;
+      const retriable = !status || status >= 500 || status === 408 || status === 429
+        || err.code === 'ECONNABORTED' || err.code === 'ERR_NETWORK';
+
+      if (!retriable || attempt >= maxAttempts) throw err;
+      await sleep(Math.min(8000, 1000 * attempt));
+    }
+  }
+
+  throw lastErr;
+}
+
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -47,7 +101,7 @@ api.interceptors.response.use(
     }
 
     const url = String(original?.url || '');
-    if (url.includes('/movies/upload') || url.includes('/auth/login') || url.includes('/auth/refresh')) {
+    if (url.includes('/auth/login') || url.includes('/auth/refresh')) {
       return Promise.reject(error);
     }
 
@@ -154,7 +208,7 @@ export const updateMovie = (id, data) => api.put(`/categories/movies/${id}`, dat
 export const uploadMovie = async (categoryId, file, { name, description, is_public, poster_url, onProgress } = {}) => {
   const CHUNK_SIZE = 8 * 1024 * 1024;
   const uploadConfig = {
-    timeout: 600000,
+    timeout: 900000,
     maxBodyLength: Infinity,
     maxContentLength: Infinity,
     transformRequest: [(data, headers) => {
@@ -163,6 +217,8 @@ export const uploadMovie = async (categoryId, file, { name, description, is_publ
     }],
   };
 
+  await ensureFreshAccessToken();
+
   const { data: session } = await api.post(`/categories/${categoryId}/movies/upload/session`, {
     filename: file.name,
     total_size: file.size,
@@ -170,12 +226,13 @@ export const uploadMovie = async (categoryId, file, { name, description, is_publ
     description,
     is_public: is_public !== false,
     poster_url,
-  });
+  }, { timeout: 120000 });
 
   const uploadId = session.upload_id;
   const chunkSize = session.chunk_size || CHUNK_SIZE;
   const totalChunks = session.total_chunks || Math.ceil(file.size / chunkSize);
   let uploadedBytes = 0;
+  const chunkUrl = `/categories/${categoryId}/movies/upload/session/${uploadId}/chunk`;
 
   try {
     for (let index = 0; index < totalChunks; index += 1) {
@@ -185,14 +242,11 @@ export const uploadMovie = async (categoryId, file, { name, description, is_publ
       form.append('chunk_index', String(index));
       form.append('chunk', blob, `chunk-${index}`);
 
-      await api.post(`/categories/${categoryId}/movies/upload/session/${uploadId}/chunk`, form, {
-        ...uploadConfig,
-        onUploadProgress: (e) => {
-          if (onProgress && e.total) {
-            const current = uploadedBytes + e.loaded;
-            onProgress(Math.min(99, Math.round((current / file.size) * 100)));
-          }
-        },
+      await postUploadChunk(chunkUrl, form, uploadConfig, (e) => {
+        if (onProgress && e.total) {
+          const current = uploadedBytes + e.loaded;
+          onProgress(Math.min(99, Math.round((current / file.size) * 100)));
+        }
       });
 
       uploadedBytes += blob.size;
@@ -201,12 +255,17 @@ export const uploadMovie = async (categoryId, file, { name, description, is_publ
       }
     }
 
+    await ensureFreshAccessToken();
     const result = await api.post(`/categories/${categoryId}/movies/upload/session/${uploadId}/complete`, {}, {
-      timeout: 120000,
+      timeout: 600000,
     });
     if (onProgress) onProgress(100);
     return result;
   } catch (err) {
+    const status = err?.response?.status;
+    if (status === 401) {
+      err.message = 'انتهت جلسة الدخول أثناء الرفع — سجّل الدخول من جديد وحاول مرة أخرى';
+    }
     try {
       await api.delete(`/categories/${categoryId}/movies/upload/session/${uploadId}`);
     } catch { /* ignore cleanup errors */ }
