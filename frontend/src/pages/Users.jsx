@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { getUsers, createUser, deleteUser, updateUser } from '../api/client';
+import { getUsers, createUser, deleteUser, updateUser, getSiteConfig } from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { copyText } from '../utils/clipboard';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
-import { Plus, Trash2, Pencil, Calendar, Users as UsersIcon } from 'lucide-react';
+import { Plus, Trash2, Pencil, Calendar, Users as UsersIcon, Copy, Check, X } from 'lucide-react';
 
 function addDays(days) {
   const d = new Date();
@@ -34,6 +35,9 @@ export default function Users() {
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [loginBase, setLoginBase] = useState('');
+  const [copiedId, setCopiedId] = useState(null);
+  const [created, setCreated] = useState(null);
 
   const fetchUsers = async () => {
     try {
@@ -44,6 +48,43 @@ export default function Users() {
   };
 
   useEffect(() => { fetchUsers(); }, []);
+
+  useEffect(() => {
+    getSiteConfig()
+      .then(({ data }) => {
+        if (data?.public_domain) {
+          setLoginBase(`${data.use_https ? 'https' : 'http'}://${data.public_domain}`);
+        } else {
+          setLoginBase(window.location.origin);
+        }
+      })
+      .catch(() => setLoginBase(window.location.origin));
+  }, []);
+
+  const loginUrl = `${loginBase || window.location.origin}/watch/login`;
+
+  const buildAccountInfo = ({ username, full_name, password, max_connections, expires_at }) => {
+    const lines = [];
+    if (full_name) lines.push(`الاسم: ${full_name}`);
+    lines.push(`رابط الدخول: ${loginUrl}`);
+    lines.push(`اسم المستخدم: ${username}`);
+    lines.push(`كلمة المرور: ${password || '«التي حددتها عند الإنشاء»'}`);
+    lines.push(`عدد الأجهزة: ${max_connections || 1}`);
+    lines.push(expires_at
+      ? `تاريخ الانتهاء: ${new Date(expires_at).toLocaleString('ar')}`
+      : 'تاريخ الانتهاء: بدون');
+    return lines.join('\n');
+  };
+
+  const copyAccount = async (u, password) => {
+    const ok = await copyText(buildAccountInfo({ ...u, password }));
+    if (ok) {
+      setCopiedId(u.id || 'created');
+      setTimeout(() => setCopiedId(null), 2000);
+    } else {
+      alert('تعذّر النسخ — انسخ يدوياً');
+    }
+  };
 
   const resetForm = () => {
     setForm(EMPTY_FORM);
@@ -71,6 +112,15 @@ export default function Users() {
         expires_at: form.role === 'viewer' ? new Date(form.expires_at).toISOString() : undefined,
       };
       await createUser(payload);
+      // احتفظ ببيانات الدخول (مع كلمة المرور) لعرض بطاقة نسخ — لا تُسترجع كلمة المرور لاحقاً
+      setCreated({
+        id: 'created',
+        username: payload.username,
+        full_name: form.full_name || '',
+        password: form.password,
+        max_connections: payload.max_connections,
+        expires_at: payload.expires_at || null,
+      });
       resetForm();
       fetchUsers();
     } catch (err) {
@@ -139,6 +189,27 @@ export default function Users() {
         حدّد <strong>عدد الأجهزة</strong> المسموح بها للحساب — تسجيل دخول جهاز إضافي فوق العدد يُخرج أقدم جهاز.
         و<strong>تاريخ الانتهاء</strong> بعده لا يستطيع الدخول.
       </div>
+
+      {created && (
+        <div className="admin-alert admin-alert-success mb-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="text-sm">
+              <div className="font-bold mb-1">تم إنشاء الحساب — انسخ بيانات الدخول وأرسلها للعميل الآن</div>
+              <div className="text-xs text-slate-600">كلمة المرور لا تظهر بعد إغلاق هذه الرسالة (تُخزَّن مشفّرة).</div>
+              <pre className="mt-2 text-xs bg-white/70 rounded-lg p-3 whitespace-pre-wrap font-sans leading-6">{buildAccountInfo(created)}</pre>
+            </div>
+            <div className="flex flex-col gap-2 shrink-0">
+              <button className="btn btn-primary btn-sm" onClick={() => copyAccount(created, created.password)}>
+                {copiedId === 'created' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                {copiedId === 'created' ? 'تم النسخ' : 'نسخ'}
+              </button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setCreated(null)}>
+                <X className="w-4 h-4" /> إغلاق
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showForm && !editId && (
         <form onSubmit={handleCreate} className="card mb-6 space-y-4">
@@ -246,6 +317,9 @@ export default function Users() {
                     <td>{u.is_active ? <span className="text-emerald-600 font-medium">نشط</span> : <span className="text-red-500">معطّل</span>}</td>
                     <td className="text-slate-400 text-xs">{u.last_login ? new Date(u.last_login).toLocaleString('ar') : '-'}</td>
                     <td className="flex gap-1">
+                      <button className="btn-icon" onClick={() => copyAccount(u)} title="نسخ معلومات الحساب">
+                        {copiedId === u.id ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+                      </button>
                       <button className="btn-icon" onClick={() => startEdit(u)} title="تعديل"><Pencil className="w-4 h-4" /></button>
                       {!isSelf && (
                         <button className="btn-icon btn-icon-danger" onClick={() => handleDelete(u)} title="حذف"><Trash2 className="w-4 h-4" /></button>
