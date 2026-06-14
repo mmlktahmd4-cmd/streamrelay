@@ -189,6 +189,12 @@ function buildFFmpegArgs(channel, sourceOverride = null) {
   const rawType = channel.source_type || 'hls';
   const inputType = sourceLower.includes('.m3u8') ? 'hls' : rawType;
 
+  // مصدر HLS نظيف (m3u8) مقابل بث mpegts مباشر (Xtream بلا امتداد).
+  // النسخ المباشر (copy) لمصدر mpegts هو الحالة التي تتقطّع/تتجمّد/تكرّر بعد دقائق.
+  const isHlsSource = inputType === 'hls' || sourceLower.includes('.m3u8');
+  const isCopyOut = !channel.transcode_enabled;
+  const isRawMpegtsCopy = isCopyOut && !isHlsSource;
+
   // مهم جداً: لا نستخدم reconnect_at_eof أبداً.
   // كان يُستخدم لمصادر http، لكنه يسبب حلقة إعادة اتصال لحظية (0s) لا نهائية عند أي
   // مصدر يُرجع EOF بسرعة (رابط منتهٍ/خاطئ أو ليس بثاً مستمراً)، فلا يخرج فيديو أبداً
@@ -241,7 +247,13 @@ function buildFFmpegArgs(channel, sourceOverride = null) {
     '-i', sourceUrl
   );
 
-  args.push('-fflags', '+genpts+discardcorrupt');
+  // بث mpegts المباشر كثيراً ما يحوي DTS غير متسلسلة وفواصل زمنية (PCR reset)
+  // تُسبّب تجمّد/تقطيع عند النسخ. igndts يتجاهل DTS التالفة فيستقر التقسيم والتشغيل.
+  if (isRawMpegtsCopy) {
+    args.push('-fflags', '+genpts+discardcorrupt+igndts');
+  } else {
+    args.push('-fflags', '+genpts+discardcorrupt');
+  }
   args.push('-max_muxing_queue_size', '2048');
   args.push('-avoid_negative_ts', 'make_zero');
 
@@ -289,17 +301,30 @@ function buildFFmpegArgs(channel, sourceOverride = null) {
 
       const hlsDir = path.join(config.streaming.hlsDir, channel.id);
 
+      const hlsFlags = ['delete_segments', 'omit_endlist', 'program_date_time', 'temp_file'];
+      if (isRawMpegtsCopy) {
+        // قسّم المقاطع بالوقت حتى مع ندرة الإطارات المفتاحية (يمنع مقاطع طويلة
+        // غير منتظمة تُسبّب انحراف المشغّل عن الحافة الحية وتكرار المشهد)،
+        // وعلّم بدايات الانقطاع الزمني.
+        hlsFlags.push('split_by_time', 'discont_start');
+      } else {
+        // مصدر HLS نظيف: كل مقطع يبدأ بإطار مفتاحي
+        hlsFlags.push('independent_segments');
+      }
+      // نافذة أكبر قليلاً لمصادر mpegts لإعطاء المشغّل هامش أمان قبل حذف المقاطع
+      const hlsListSize = isRawMpegtsCopy ? '12' : '10';
+
       args.push(
 
         '-f', 'hls',
 
         '-hls_time', '4',
 
-        '-hls_list_size', '10',
+        '-hls_list_size', hlsListSize,
 
-        '-hls_delete_threshold', '4',
+        '-hls_delete_threshold', '6',
 
-        '-hls_flags', 'delete_segments+omit_endlist+program_date_time+independent_segments+temp_file',
+        '-hls_flags', hlsFlags.join('+'),
 
         '-hls_start_number_source', 'epoch',
 
