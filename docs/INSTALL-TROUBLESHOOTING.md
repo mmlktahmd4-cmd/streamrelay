@@ -316,7 +316,35 @@ add dst-address=10.10.10.0/24 gateway=10.10.10.1 routing-table=STAR-2 comment="S
 
 ---
 
-## 15) أوامر مفيدة
+## 15) البث كان شغّال وتوقف — استعادة MikroTik
+
+**السبب الشائع:** سكربت تنظيف حذف `stream-bypass-routing` بدون إعادة إضافتها.
+
+**الحل — Winbox → Terminal → الصق:**
+
+```bash
+# من GitHub (على أي جهاز):
+# https://raw.githubusercontent.com/mmlktahmd4-cmd/streamrelay/main/scripts/mikrotik-restore-stream.rsc
+```
+
+أو انسخ محتوى `scripts/mikrotik-restore-stream.rsc` من المستودع والصقه في Terminal الميكروtik.
+
+**3 قواعد فقط (تعليق عربي):**
+| التعليق | الوظيفة |
+|---------|---------|
+| `بث: السماح للعملاء بالوصول لسيرفر البث محليا` | Hotspot/PPPoE → 10.10.10.25 |
+| `بث: إنternet السيرفر عبر Starlink` | خروج السيرفر عبر ether2 |
+| `بث: NAT السيرفر خارج Starlink` | NAT على Starlink |
+
+**تحقق على سيرفر البث:**
+```bash
+cd /opt/streamrelay && sudo docker compose ps
+curl http://127.0.0.1/api/health
+```
+
+---
+
+## 16) أوامر مفيدة
 
 ```bash
 cd /opt/streamrelay
