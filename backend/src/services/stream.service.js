@@ -296,11 +296,15 @@ function buildFFmpegArgs(channel, sourceOverride = null) {
 
       const hlsDir = path.join(config.streaming.hlsDir, channel.id);
 
+      // مقاطع أطول للبث المُعاد (مثل Xtream الذي يستخدم 10ث) — تقلّل تبديل المقاطع
+      // وتعطي المشغّل هامشاً أكبر فيقلّ التقطيع. نستخدم 6ث كموازنة بين السلاسة والتأخير.
+      const hlsTime = isLiveRelay ? '6' : '4';
+
       args.push(
 
         '-f', 'hls',
 
-        '-hls_time', '4',
+        '-hls_time', hlsTime,
 
         '-hls_list_size', '10',
 
