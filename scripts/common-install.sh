@@ -54,35 +54,32 @@ stop_host_db_redis_conflicts() {
   systemctl stop redis-server redis postgresql 2>/dev/null || true
 }
 
-# يصلح فشل docker build/pull بسبب DNS: "lookup registry-1.docker.io on 127.0.0.x"
-# السبب: resolv.conf على المضيف يشير لمحلّل محلي (loopback) غير قابل للوصول من داخل شبكة الحاوية.
-# الحل: إضافة DNS عام في /etc/docker/daemon.json ثم إعادة تشغيل Docker.
-ensure_docker_dns() {
-  # نتدخل فقط إذا كان resolv.conf يستخدم محلّلاً محلياً (127.x)
-  if ! grep -Eq '^[[:space:]]*nameserver[[:space:]]+127\.' /etc/resolv.conf 2>/dev/null; then
-    return 0
-  fi
+# اختبار فعلي: هل يستطيع Docker حل اسم سجل الصور والوصول إليه؟
+# نستخدم الصورة node:20-alpine نفسها لأنها أول ما يفشل في البناء — ونجاح سحبها
+# دليل قاطع أن DNS سليم (وتُخزَّن للبناء لاحقاً فلا يضيع الجهد).
+docker_registry_dns_ok() {
+  docker pull node:20-alpine >/dev/null 2>&1
+}
 
+# يكتب/يدمج dns عام في /etc/docker/daemon.json (يستبدل أي dns قديم/فارغ/معطوب)
+write_docker_dns_config() {
   local cfg="/etc/docker/daemon.json"
-  if [ -f "$cfg" ] && grep -q '"dns"' "$cfg" 2>/dev/null; then
-    return 0
-  fi
-
-  echo "      ضبط DNS لـ Docker (resolv.conf محلي على 127.x)..."
   mkdir -p /etc/docker
-
-  if [ -f "$cfg" ] && command -v python3 >/dev/null 2>&1; then
+  if command -v python3 >/dev/null 2>&1; then
     python3 - "$cfg" <<'PY' || true
-import json, sys
+import json, os, sys
 p = sys.argv[1]
-try:
-    with open(p) as f:
-        d = json.load(f)
-    if not isinstance(d, dict):
+d = {}
+if os.path.exists(p):
+    try:
+        with open(p) as f:
+            d = json.load(f)
+        if not isinstance(d, dict):
+            d = {}
+    except Exception:
         d = {}
-except Exception:
-    d = {}
-d.setdefault("dns", ["8.8.8.8", "1.1.1.1"])
+# استبدال صريح (وليس setdefault) لإصلاح أي dns قديم معطوب
+d["dns"] = ["8.8.8.8", "1.1.1.1"]
 with open(p, "w") as f:
     json.dump(d, f, indent=2)
 PY
@@ -93,10 +90,60 @@ PY
 }
 JSON
   fi
+}
+
+# يصلح فشل docker build/pull بسبب DNS: "lookup registry-1.docker.io on 127.0.0.x"
+# السبب: resolv.conf على المضيف يشير لمحلّل محلي (loopback، مثل 127.0.0.53 من
+# systemd-resolved) لا تصله حاويات/بنّاء Docker. الحل النهائي والمتحقَّق منه:
+#   1) إن كان السحب يعمل أصلاً لا نفعل شيئاً (idempotent).
+#   2) نكتب dns عام في daemon.json (نستبدل أي قيمة قديمة) ونعيد تشغيل Docker.
+#   3) نعيد إنشاء بنّاء BuildKit حتى لا يحتفظ بـDNS قديم.
+#   4) إن بقي معطوباً نُصلح resolv.conf على المضيف كحل أخير ونعيد المحاولة.
+# مهم: لا نخرج مبكراً لمجرد وجود مفتاح "dns" — نتحقق دائماً من نجاح السحب فعلياً.
+ensure_docker_dns() {
+  if ! command -v docker >/dev/null 2>&1; then
+    return 0
+  fi
+
+  echo "      التحقق من قدرة Docker على حل أسماء النطاقات..."
+  if docker_registry_dns_ok; then
+    echo "      ✓ DNS سليم"
+    return 0
+  fi
+
+  echo "      DNS الخاص بـ Docker لا يحل أسماء النطاقات — جارٍ الإصلاح..."
+  write_docker_dns_config
 
   echo "      إعادة تشغيل Docker لتطبيق DNS..."
   systemctl restart docker 2>/dev/null || service docker restart 2>/dev/null || true
-  sleep 4
+  sleep 5
+
+  # بنّاء BuildKit المنفصل قد يحتفظ بـDNS قديم — أعِد إنشاءه (تجاهل الفشل)
+  docker buildx rm streamrelay-builder >/dev/null 2>&1 || true
+
+  if docker_registry_dns_ok; then
+    echo "      ✓ تم إصلاح DNS عبر daemon.json"
+    return 0
+  fi
+
+  echo "      ما زال معطوباً — إصلاح resolv.conf على المضيف كحل أخير..."
+  # المضيف يستخدم محلّل loopback (systemd-resolved) — نثبّت DNS عاماً مباشرة.
+  if grep -Eq '^[[:space:]]*nameserver[[:space:]]+127\.' /etc/resolv.conf 2>/dev/null \
+     || [ -L /etc/resolv.conf ]; then
+    cp -a /etc/resolv.conf /etc/resolv.conf.streamrelay.bak 2>/dev/null || true
+    rm -f /etc/resolv.conf 2>/dev/null || true
+    printf 'nameserver 8.8.8.8\nnameserver 1.1.1.1\n' > /etc/resolv.conf
+  fi
+  systemctl restart docker 2>/dev/null || service docker restart 2>/dev/null || true
+  sleep 5
+
+  if docker_registry_dns_ok; then
+    echo "      ✓ تم إصلاح DNS عبر resolv.conf"
+    return 0
+  fi
+
+  echo "      ⚠ تعذّر إصلاح DNS تلقائياً — تحقق من اتصال السيرفر بالإنترنت (منفذ 53)."
+  return 1
 }
 
 redis_ping_ok() {

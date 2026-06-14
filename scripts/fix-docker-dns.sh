@@ -22,54 +22,18 @@ echo "[1] DNS الحالي على المضيف:"
 grep -E '^[[:space:]]*nameserver' /etc/resolv.conf 2>/dev/null || echo "  (لا يوجد)"
 echo ""
 
-echo "[2] ضبط DNS عام لـ Docker إن لزم..."
-# اجبر التطبيق حتى لو لم يكن resolv.conf على 127.x (مفيد لو فشل السحب لأسباب DNS أخرى)
-cfg="/etc/docker/daemon.json"
-mkdir -p /etc/docker
-if [ -f "$cfg" ] && grep -q '"dns"' "$cfg" 2>/dev/null; then
-  echo "  daemon.json يحتوي DNS بالفعل — تخطّي."
-else
-  if [ -f "$cfg" ] && command -v python3 >/dev/null 2>&1; then
-    python3 - "$cfg" <<'PY' || true
-import json, sys
-p = sys.argv[1]
-try:
-    with open(p) as f:
-        d = json.load(f)
-    if not isinstance(d, dict):
-        d = {}
-except Exception:
-    d = {}
-d.setdefault("dns", ["8.8.8.8", "1.1.1.1"])
-with open(p, "w") as f:
-    json.dump(d, f, indent=2)
-PY
-  else
-    cat > "$cfg" <<'JSON'
-{
-  "dns": ["8.8.8.8", "1.1.1.1"]
-}
-JSON
-  fi
-  echo "  تم تحديث $cfg"
-  echo "  إعادة تشغيل Docker..."
-  systemctl restart docker 2>/dev/null || service docker restart 2>/dev/null || true
-  sleep 4
-fi
-
-echo ""
-echo "[3] اختبار سحب صورة node:20-alpine..."
-if docker pull node:20-alpine >/dev/null 2>&1; then
-  echo "  ✓ نجح سحب الصورة — DNS سليم الآن."
-else
-  echo "  ✗ ما زال السحب يفشل. تحقق يدوياً:"
+echo "[2] إصلاح DNS لـ Docker (متحقَّق منه)..."
+if ! ensure_docker_dns; then
+  echo ""
+  echo "  ✗ تعذّر إصلاح DNS تلقائياً. تحقق يدوياً:"
   echo "    cat /etc/resolv.conf"
-  echo "    docker run --rm alpine nslookup registry-1.docker.io"
+  echo "    cat /etc/docker/daemon.json"
+  echo "    docker pull node:20-alpine"
   exit 1
 fi
 
 echo ""
-echo "[4] إعادة تشغيل التحديث..."
+echo "[3] إعادة تشغيل التحديث..."
 if [ -f "${SCRIPT_DIR}/deploy-update.sh" ]; then
   bash "${SCRIPT_DIR}/deploy-update.sh"
   echo ""
