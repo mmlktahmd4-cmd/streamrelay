@@ -189,11 +189,10 @@ function buildFFmpegArgs(channel, sourceOverride = null) {
   const rawType = channel.source_type || 'hls';
   const inputType = sourceLower.includes('.m3u8') ? 'hls' : rawType;
 
-  // مصدر HLS نظيف (m3u8) مقابل بث mpegts مباشر (Xtream بلا امتداد).
-  // النسخ المباشر (copy) لمصدر mpegts هو الحالة التي تتقطّع/تتجمّد/تكرّر بعد دقائق.
-  const isHlsSource = inputType === 'hls' || sourceLower.includes('.m3u8');
-  const isCopyOut = !channel.transcode_enabled;
-  const isRawMpegtsCopy = isCopyOut && !isHlsSource;
+  // بثّ مباشر يُعاد بثّه. نطبّق تقنية Xtream Codes المثبتة لمنع التقطيع:
+  //   -re             : قراءة المصدر بسرعة الزمن الحقيقي → تقدّم سلس لقائمة HLS
+  //   -err_detect ignore_err : تجاهل أخطاء الإشارة بدل توقّف/تعليق العملية
+  const isLiveRelay = ['hls', 'http', 'm3u'].includes(inputType);
 
   // مهم جداً: لا نستخدم reconnect_at_eof أبداً.
   // كان يُستخدم لمصادر http، لكنه يسبب حلقة إعادة اتصال لحظية (0s) لا نهائية عند أي
@@ -201,7 +200,9 @@ function buildFFmpegArgs(channel, sourceOverride = null) {
   // وتعلّق القناة حتى تنتهي مهلة HLS ثم تفشل بـ "HLS output not ready".
   // نكتفي بإعادة الاتصال عند أخطاء الشبكة الحقيقية فقط؛ وعندها EOF النظيف يُنهي
   // العملية فوراً فتفشل القناة بسرعة وتُجرَّب القناة الاحتياطية إن وُجدت.
-  if (inputType === 'hls' || inputType === 'm3u' || inputType === 'http') {
+  if (isLiveRelay) {
+    // تقنية Xtream: قراءة بسرعة الزمن الحقيقي + تجاهل أخطاء الإشارة (قبل ‎-i)
+    args.push('-re', '-err_detect', 'ignore_err');
     args.push(
       '-reconnect', '1',
       '-reconnect_streamed', '1',
@@ -247,13 +248,7 @@ function buildFFmpegArgs(channel, sourceOverride = null) {
     '-i', sourceUrl
   );
 
-  // بث mpegts المباشر كثيراً ما يحوي DTS غير متسلسلة وفواصل زمنية (PCR reset)
-  // تُسبّب تجمّد/تقطيع عند النسخ. igndts يتجاهل DTS التالفة فيستقر التقسيم والتشغيل.
-  if (isRawMpegtsCopy) {
-    args.push('-fflags', '+genpts+discardcorrupt+igndts');
-  } else {
-    args.push('-fflags', '+genpts+discardcorrupt');
-  }
+  args.push('-fflags', '+genpts+discardcorrupt');
   args.push('-max_muxing_queue_size', '2048');
   args.push('-avoid_negative_ts', 'make_zero');
 
@@ -301,30 +296,17 @@ function buildFFmpegArgs(channel, sourceOverride = null) {
 
       const hlsDir = path.join(config.streaming.hlsDir, channel.id);
 
-      const hlsFlags = ['delete_segments', 'omit_endlist', 'program_date_time', 'temp_file'];
-      if (isRawMpegtsCopy) {
-        // قسّم المقاطع بالوقت حتى مع ندرة الإطارات المفتاحية (يمنع مقاطع طويلة
-        // غير منتظمة تُسبّب انحراف المشغّل عن الحافة الحية وتكرار المشهد)،
-        // وعلّم بدايات الانقطاع الزمني.
-        hlsFlags.push('split_by_time', 'discont_start');
-      } else {
-        // مصدر HLS نظيف: كل مقطع يبدأ بإطار مفتاحي
-        hlsFlags.push('independent_segments');
-      }
-      // نافذة أكبر قليلاً لمصادر mpegts لإعطاء المشغّل هامش أمان قبل حذف المقاطع
-      const hlsListSize = isRawMpegtsCopy ? '12' : '10';
-
       args.push(
 
         '-f', 'hls',
 
         '-hls_time', '4',
 
-        '-hls_list_size', hlsListSize,
+        '-hls_list_size', '10',
 
-        '-hls_delete_threshold', '6',
+        '-hls_delete_threshold', '4',
 
-        '-hls_flags', hlsFlags.join('+'),
+        '-hls_flags', 'delete_segments+omit_endlist+program_date_time+independent_segments+temp_file',
 
         '-hls_start_number_source', 'epoch',
 
