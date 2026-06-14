@@ -285,7 +285,38 @@ sudo bash scripts/install-preflight.sh
 
 ---
 
-## 13) أوامر مفيدة
+## 14) Hotspot يفتح البث — البرودباند (PPPoE) لا
+
+**الأعراض:** مشترك Hotspot يفتح `http://10.10.10.25/watch/login` — مشترك PPPoE/برودباند لا.
+
+**السبب:** PPPoE يستخدم **routing-table** منفصل (مثل `rtab-3`) — بدون route لـ `10.10.10.0/24` يخرج الطلب للإنternet بدل سيرفر البث.
+
+**الحل — Winbox → Terminal:**
+
+```routeros
+/ip firewall address-list
+add list=streamrelay-broadband address=10.2.0.0/16 comment="StreamRelay PPPoE"
+add list=streamrelay-broadband address=10.4.0.0/16 comment="StreamRelay PPPoE"
+
+/ip firewall filter
+add chain=forward action=accept protocol=tcp src-address-list=streamrelay-broadband dst-address=10.10.10.25 dst-port=80,8080 comment="StreamRelay broadband" place-before=0
+
+/ip route
+add dst-address=10.10.10.0/24 gateway=10.10.10.1 routing-table=rtab-3 comment="StreamRelay"
+add dst-address=10.10.10.0/24 gateway=10.10.10.1 routing-table=rtab-1 comment="StreamRelay"
+add dst-address=10.10.10.0/24 gateway=10.10.10.1 routing-table=STAR-2 comment="StreamRelay"
+```
+
+**تحقق من اسم routing-table:**
+```routeros
+/ppp profile print
+```
+
+**أو** من لوحة StreamRelay → **MikroTik** → انسخ السكript المحدّث (يدعم البرودباند تلقائياً).
+
+---
+
+## 15) أوامر مفيدة
 
 ```bash
 cd /opt/streamrelay

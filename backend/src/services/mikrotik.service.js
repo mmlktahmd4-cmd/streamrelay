@@ -4,7 +4,14 @@ import { getSystemMetrics } from '../utils/metrics.js';
 import { getPublicUrls, refreshPublicUrlCache } from './public-url.service.js';
 
 const ADDRESS_LIST = 'streamrelay-clients';
+const BROADBAND_LIST = 'streamrelay-broadband';
 const COMMENT_PREFIX = 'StreamRelay';
+
+/** شبكات PPPoE الافتراضية — عدّلها من إعدادات MikroTik في اللوحة إن لزم */
+const DEFAULT_BROADBAND_SUBNETS = ['10.2.0.0/16', '10.4.0.0/16'];
+
+/** جداول توجيه PPPoE — تحقق من PPP > Profiles > Routing Table */
+const DEFAULT_BROADBAND_ROUTING_TABLES = ['rtab-3', 'rtab-1', 'STAR-2'];
 
 /** يحوّل 30.30.30.1 → 30.30.30.0/24 */
 export function subnetFromServerIp(ip) {
@@ -47,6 +54,12 @@ export async function getMikrotikConfig() {
   const serverIp = stored.server_ip || '';
   const webPort = stored.web_port || info.web_port;
   const clientSubnet = serverIp ? subnetFromServerIp(serverIp) : null;
+  const broadbandSubnets = stored.broadband_subnets?.length
+    ? stored.broadband_subnets
+    : DEFAULT_BROADBAND_SUBNETS;
+  const broadbandRoutingTables = stored.broadband_routing_tables?.length
+    ? stored.broadband_routing_tables
+    : DEFAULT_BROADBAND_ROUTING_TABLES;
 
   return {
     ...DEFAULT_CONFIG,
@@ -55,6 +68,8 @@ export async function getMikrotikConfig() {
     web_port: webPort,
     api_port: stored.api_port || info.api_port,
     client_subnet: clientSubnet,
+    broadband_subnets: broadbandSubnets,
+    broadband_routing_tables: broadbandRoutingTables,
     detected: info,
     viewer_url: serverIp ? buildViewerUrl(serverIp, webPort) : null,
     active_urls: {
@@ -106,6 +121,8 @@ export async function saveMikrotikConfig(data) {
     client_subnet: subnetFromServerIp(serverIp),
     web_port: data.web_port ?? current.web_port ?? getServerInfo().web_port,
     api_port: data.api_port ?? current.api_port ?? config.port,
+    broadband_subnets: data.broadband_subnets ?? current.broadband_subnets ?? DEFAULT_BROADBAND_SUBNETS,
+    broadband_routing_tables: data.broadband_routing_tables ?? current.broadband_routing_tables ?? DEFAULT_BROADBAND_ROUTING_TABLES,
   };
 
   await query(
@@ -122,26 +139,64 @@ export async function saveMikrotikConfig(data) {
 function buildMainScript(cfg) {
   const ports = [...new Set([cfg.web_port, cfg.api_port].filter(Boolean))].join(',');
   const subnet = cfg.client_subnet || subnetFromServerIp(cfg.server_ip);
+  const streamSubnet = subnetFromServerIp(cfg.server_ip);
+  const broadbandSubnets = cfg.broadband_subnets?.length
+    ? cfg.broadband_subnets
+    : DEFAULT_BROADBAND_SUBNETS;
+  const routingTables = cfg.broadband_routing_tables?.length
+    ? cfg.broadband_routing_tables
+    : DEFAULT_BROADBAND_ROUTING_TABLES;
+  const streamGateway = streamSubnet
+    ? `${cfg.server_ip.split('.').slice(0, 3).join('.')}.1`
+    : '10.10.10.1';
 
-  return [
+  const lines = [
     `# ═══════════════════════════════════════════`,
     `# StreamRelay — إعداد الميكروتك`,
-    `# جهاز البث: ${cfg.server_ip}   |   شبكة العملاء: ${subnet}`,
+    `# جهاز البث: ${cfg.server_ip}   |   شبكة LAN: ${subnet}`,
     `# انسخ كل السطور والصقها في Terminal الميكروتك ثم Enter`,
     `# ═══════════════════════════════════════════`,
     '',
-    '# 1) السماح بوصول العملاء لجهاز البث (Firewall)',
+    '# 1) Hotspot / LAN — السماح بوصول العملاء لجهاز البث',
     '/ip firewall address-list',
-    `add list=${ADDRESS_LIST} address=${subnet} comment="${COMMENT_PREFIX}"`,
+    `:if ([:len [/ip firewall address-list find where list=${ADDRESS_LIST} and address=${subnet}]] = 0) do={ add list=${ADDRESS_LIST} address=${subnet} comment="${COMMENT_PREFIX}" }`,
     '/ip firewall filter',
-    `add chain=forward action=accept protocol=tcp src-address-list=${ADDRESS_LIST} dst-address=${cfg.server_ip} dst-port=${ports} comment="${COMMENT_PREFIX}"`,
-    `add chain=input action=accept protocol=tcp src-address-list=${ADDRESS_LIST} dst-address=${cfg.server_ip} dst-port=${ports} comment="${COMMENT_PREFIX}"`,
+    `:if ([:len [/ip firewall filter find where comment="${COMMENT_PREFIX} LAN"]] = 0) do={ add chain=forward action=accept protocol=tcp src-address-list=${ADDRESS_LIST} dst-address=${cfg.server_ip} dst-port=${ports} comment="${COMMENT_PREFIX} LAN" place-before=0 }`,
+    `:if ([:len [/ip firewall filter find where comment="${COMMENT_PREFIX} LAN input"]] = 0) do={ add chain=input action=accept protocol=tcp src-address-list=${ADDRESS_LIST} dst-address=${cfg.server_ip} dst-port=${ports} comment="${COMMENT_PREFIX} LAN input" }`,
     '',
-    '# 2) (اختياري) حجز IP ثابت لجهاز البث عبر DHCP — يضمن أن يأخذ السيرفر نفس الـ IP دائماً',
-    '#    أزل # من السطرين، واستبدل MAC بعنوان MAC لكرت السيرفر (تجده في صفحة «IP السيرفر»)',
+    '# 2) البرودباند (PPPoE) — Hotspot يشتغل لكن PPPoE يحتاج توجيه + جدار ناري',
+    '/ip firewall address-list',
+  ];
+
+  for (const bb of broadbandSubnets) {
+    lines.push(`:if ([:len [/ip firewall address-list find where list=${BROADBAND_LIST} and address=${bb}]] = 0) do={ add list=${BROADBAND_LIST} address=${bb} comment="${COMMENT_PREFIX} PPPoE" }`);
+  }
+
+  lines.push(
+    '/ip firewall filter',
+    `:if ([:len [/ip firewall filter find where comment="${COMMENT_PREFIX} broadband"]] = 0) do={ add chain=forward action=accept protocol=tcp src-address-list=${BROADBAND_LIST} dst-address=${cfg.server_ip} dst-port=${ports} comment="${COMMENT_PREFIX} broadband" place-before=0 }`,
+    '',
+    '# 3) توجيه شبكة البث في جداول PPPoE (بدونها البرودباند لا يصل لـ ' + cfg.server_ip + ')',
+    '/ip route',
+  );
+
+  if (streamSubnet) {
+    for (const table of routingTables) {
+      lines.push(`:if ([:len [/ip route find where dst-address=${streamSubnet} and routing-table=${table} and comment="${COMMENT_PREFIX}"]] = 0) do={ add dst-address=${streamSubnet} gateway=${streamGateway} routing-table=${table} comment="${COMMENT_PREFIX}" }`);
+    }
+  }
+
+  lines.push(
+    '',
+    '# 4) (اختياري) حجز IP ثابت لجهاز البث عبر DHCP',
     '# /ip dhcp-server lease',
     `# add address=${cfg.server_ip} mac-address=AA:BB:CC:DD:EE:FF comment="${COMMENT_PREFIX}"`,
-  ].join('\n');
+    '',
+    '# ── تحقق: /ppp profile print  ← اسم routing-table لكل بروفايل',
+    `# ── رابط المشاهدة: http://${cfg.server_ip}/watch/login`,
+  );
+
+  return lines.join('\n');
 }
 
 function buildRemoveScript() {
@@ -149,6 +204,8 @@ function buildRemoveScript() {
     `# حذف إعداد StreamRelay من الميكروتك`,
     `/ip firewall filter remove [find comment~"${COMMENT_PREFIX}"]`,
     `/ip firewall address-list remove [find list=${ADDRESS_LIST}]`,
+    `/ip firewall address-list remove [find list=${BROADBAND_LIST}]`,
+    `/ip route remove [find comment~"${COMMENT_PREFIX}"]`,
     `/ip dhcp-server lease remove [find comment~"${COMMENT_PREFIX}"]`,
   ].join('\n');
 }
@@ -180,9 +237,12 @@ export async function generateScripts() {
         'اكتب نفس IP جهاز البث في الأعلى هنا واضغط حفظ، ثم «نسخ السكربت».',
         'Winbox → New Terminal → الصق السكربت → Enter (يفتح الجدار الناري).',
         cfg.server_ip ? `أعطِ العملاء رابط المشاهدة: ${viewerUrl}` : 'أعطِ العملاء رابط المشاهدة بعد حفظ الـ IP.',
+        'إذا Hotspot يشتغل والبرودباند (PPPoE) لا: الصق السكربت — يضيف توجيه 10.10.10.0/24 لجداول PPPoE + جدار ناري.',
       ],
       notes: [
         'مهم: IP جهاز البث في الميكروتك يجب أن يطابق المثبّت في اللوحة تماماً — وإلا لن يصل البث للعملاء.',
+        'Hotspot على bridge يصل للبث مباشرة؛ مشتركو PPPoE يستخدمون routing-table منفصل — بدون route لشبكة البث لا يفتح 10.10.10.x.',
+        'تحقق من أسماء routing-table: PPP > Profiles → Routing Table — عدّل broadband_routing_tables إن اختلفت.',
         'للإعداد البسيط (السيرفر والعملاء على نفس الشبكة): لا تحذف أي منفذ من البرidج — فقط احجز IP السيرفر وافتح الجدار الناري.',
         'احذف منفذاً من البرidج فقط إذا أردت شبكة منفصلة للسيرفر — عندها سكربت forward يسمح بالعبور بين الشبكتين تلقائياً.',
         'لا تترك السيرفر يأخذ IP عشوائياً من DHCP — استخدم IP ثابت أو حجز (Static Lease) ليبقى مطابقاً للوحة.',
