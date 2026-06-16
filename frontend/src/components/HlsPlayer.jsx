@@ -16,14 +16,14 @@ export default function HlsPlayer({ src, autoPlay = true, onDemand = false, star
   const [levels, setLevels] = useState([]);
   const [currentLevel, setCurrentLevel] = useState(-1);
   const [autoMode, setAutoMode] = useState(true);
-  const [qualityMenuOpen, setQualityMenuOpen] = useState(false);
+  // الدقّة الفعلية المُشغّلة (تُقرأ من عنصر الفيديو — تتغيّر لحظياً مع تبديل ABR)
+  const [playingHeight, setPlayingHeight] = useState(0);
 
   const selectLevel = (index) => {
     const hls = hlsRef.current;
     if (!hls) return;
     hls.currentLevel = index; // -1 = تلقائي
     setAutoMode(index === -1);
-    setQualityMenuOpen(false);
   };
 
   useEffect(() => {
@@ -38,7 +38,16 @@ export default function HlsPlayer({ src, autoPlay = true, onDemand = false, star
     setLevels([]);
     setCurrentLevel(-1);
     setAutoMode(true);
-    setQualityMenuOpen(false);
+    setPlayingHeight(0);
+
+    const updatePlayingRes = () => {
+      if (video.videoHeight > 0) setPlayingHeight(video.videoHeight);
+    };
+    // 'resize' يُطلَق عند تغيّر دقّة الفيديو فعلياً (أي عند تبديل جودة ABR)
+    video.addEventListener('resize', updatePlayingRes);
+    video.addEventListener('loadedmetadata', updatePlayingRes);
+    video.addEventListener('playing', updatePlayingRes);
+
     let retryTimer = null;
     let fatalRetries = 0;
     let mediaErrorCount = 0;
@@ -156,68 +165,67 @@ export default function HlsPlayer({ src, autoPlay = true, onDemand = false, star
     return () => {
       destroyed = true;
       if (retryTimer) clearTimeout(retryTimer);
+      video.removeEventListener('resize', updatePlayingRes);
+      video.removeEventListener('loadedmetadata', updatePlayingRes);
+      video.removeEventListener('playing', updatePlayingRes);
       destroyHls();
     };
   }, [src, autoPlay, onDemand]);
 
-  const activeLabel = currentLevel >= 0 && levels[currentLevel]
-    ? levelLabel(levels[currentLevel])
-    : '';
-  const badgeText = levels.length
-    ? (autoMode ? `تلقائي${activeLabel ? ` · ${activeLabel}` : ''}` : (activeLabel || 'يدوي'))
-    : '';
+  // الجودة المعروضة: نفضّل الدقّة الفعلية من الفيديو، وإلا من بيانات القائمة
+  const qualityText = playingHeight > 0
+    ? `${playingHeight}p`
+    : (currentLevel >= 0 && levels[currentLevel] ? levelLabel(levels[currentLevel]) : '—');
 
   return (
-    <div className="relative w-full bg-black aspect-video">
-      <video ref={videoRef} controls className="w-full h-full" playsInline />
+    <div className="w-full">
+      <div className="relative w-full bg-black aspect-video">
+        <video ref={videoRef} controls className="w-full h-full" playsInline />
 
-      {/* مؤشّر الجودة الحالية + اختيار يدوي — للتأكد أن البث متعدد الجودات يعمل */}
-      {levels.length > 0 && (
-        <div className="absolute top-2 left-2 z-10">
-          <button
-            type="button"
-            onClick={() => levels.length > 1 && setQualityMenuOpen((v) => !v)}
-            className={`flex items-center gap-1 rounded-md bg-black/65 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur-sm ${levels.length > 1 ? 'hover:bg-black/80 cursor-pointer' : 'cursor-default'}`}
-            title="الجودة الحالية"
-          >
-            <span>{badgeText}</span>
-            {levels.length > 1 && <span className="text-white/60">▾</span>}
-          </button>
+        {waiting && !error && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/75 text-slate-200 text-sm px-4 text-center">
+            {onDemand ? 'جاري تشغيل القناة على سيرفر البث...' : 'جاري تحميل البث...'}
+          </div>
+        )}
+        {error && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/80 text-red-300 text-sm px-4 text-center">
+            {error}
+          </div>
+        )}
+      </div>
 
-          {qualityMenuOpen && levels.length > 1 && (
-            <div className="mt-1 min-w-[120px] overflow-hidden rounded-md bg-black/85 backdrop-blur-sm text-white text-xs shadow-lg">
-              <button
-                type="button"
-                onClick={() => selectLevel(-1)}
-                className={`block w-full px-3 py-2 text-right hover:bg-white/10 ${autoMode ? 'text-teal-400 font-bold' : ''}`}
-              >
-                تلقائي{autoMode && activeLabel ? ` (${activeLabel})` : ''}
-              </button>
-              {levels.map((lvl, i) => (
-                <button
-                  type="button"
-                  key={i}
-                  onClick={() => selectLevel(i)}
-                  className={`block w-full px-3 py-2 text-right hover:bg-white/10 ${!autoMode && currentLevel === i ? 'text-teal-400 font-bold' : ''}`}
-                >
-                  {levelLabel(lvl)}
-                </button>
-              ))}
-            </div>
+      {/* شريط الجودة أسفل المشغّل — لا يأكل من مساحة الفيديو */}
+      <div className="flex items-center justify-between gap-3 bg-slate-900 px-3 py-2 text-xs text-slate-200 rounded-b-lg flex-wrap">
+        <div className="flex items-center gap-2">
+          <span className="text-slate-400">الجودة الحالية:</span>
+          <span className="font-bold text-teal-400">{qualityText}</span>
+          {levels.length > 1 && (
+            <span className="text-slate-500">{autoMode ? '(تلقائي)' : '(يدوي)'}</span>
           )}
         </div>
-      )}
 
-      {waiting && !error && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/75 text-slate-200 text-sm px-4 text-center">
-          {onDemand ? 'جاري تشغيل القناة على سيرفر البث...' : 'جاري تحميل البث...'}
-        </div>
-      )}
-      {error && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/80 text-red-300 text-sm px-4 text-center">
-          {error}
-        </div>
-      )}
+        {levels.length > 1 && (
+          <div className="flex items-center gap-1 flex-wrap">
+            <button
+              type="button"
+              onClick={() => selectLevel(-1)}
+              className={`rounded px-2 py-1 transition-colors ${autoMode ? 'bg-teal-600 text-white font-bold' : 'bg-slate-700 hover:bg-slate-600 text-slate-200'}`}
+            >
+              تلقائي
+            </button>
+            {levels.map((lvl, i) => (
+              <button
+                type="button"
+                key={i}
+                onClick={() => selectLevel(i)}
+                className={`rounded px-2 py-1 transition-colors ${!autoMode && currentLevel === i ? 'bg-teal-600 text-white font-bold' : 'bg-slate-700 hover:bg-slate-600 text-slate-200'}`}
+              >
+                {levelLabel(lvl)}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
