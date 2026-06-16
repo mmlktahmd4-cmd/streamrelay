@@ -37,16 +37,32 @@ export default function HlsPlayer({ src, autoPlay = true, onDemand = false, star
         enableWorker: true,
         lowLatencyMode: false,
         liveDurationInfinity: true,
-        backBufferLength: 60,
-        maxBufferLength: 30,
-        maxMaxBufferLength: 60,
-        liveSyncDurationCount: 3,
-        liveMaxLatencyDurationCount: 8,
+        // مخزن مؤقت أكبر يمتص تذبذب نت المشتركين البعيدين (سلوك شبيه بيوتيوب):
+        // يراكم المشغّل ثوانيَ أكثر مقدّماً فيتحمّل انقطاعات لحظية دون تجمّد.
+        backBufferLength: 30,
+        maxBufferLength: 60,
+        maxMaxBufferLength: 180,
+        // نسمح بمخزن حتى 120 ميجابايت قبل التوقف عن التحميل (للنت السريع المتذبذب)
+        maxBufferSize: 120 * 1000 * 1000,
+        // فجوات صغيرة في البث لا توقف التشغيل — يقفز فوقها بدل التجمّد
+        maxBufferHole: 0.5,
+        // نافذة تأخير أوسع للبث المباشر: نسمح للمشترك البطيء أن يتأخر كثيراً عن الحافة
+        // قبل أن يُجبر على القفز للحظة الحية (القفز هو ما يُحدث «التقطيع» المرئي).
+        liveSyncDurationCount: 4,
+        liveMaxLatencyDurationCount: 20,
+        // تقدير سرعة النت: بدء بقيمة محافِظة ثم تكيّف — يمنع اختناق البداية للبعيدين
+        abrEwmaDefaultEstimate: 800000,
+        // محاولات أكثر وأطول قبل الاستسلام (تنفع الشبكات الضعيفة/المتقطعة)
         manifestLoadingMaxRetry: 20,
         manifestLoadingRetryDelay: 1000,
         levelLoadingMaxRetry: 16,
-        fragLoadingMaxRetry: 20,
+        fragLoadingMaxRetry: 30,
         fragLoadingRetryDelay: 1000,
+        fragLoadingMaxRetryTimeout: 64000,
+        // تجاوُز التعثّر التلقائي: يدفع رأس التشغيل عند الفجوات بدل التجمّد
+        nudgeMaxRetry: 10,
+        nudgeOffset: 0.2,
+        maxStarvationDelay: 8,
       });
 
       hlsRef.current = hls;

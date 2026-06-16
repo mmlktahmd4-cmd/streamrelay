@@ -304,15 +304,18 @@ function buildFFmpegArgs(channel, sourceOverride = null) {
       // وتعطي المشغّل هامشاً أكبر فيقلّ التقطيع. نستخدم 6ث كموازنة بين السلاسة والتأخير.
       const hlsTime = isLiveRelay ? '6' : '4';
 
+      // نُبقي عدداً أكبر من المقاطع في القائمة ونؤخّر حذفها — هذا يمنح المشترك البعيد
+      // البطيء نافذة استرجاع أوسع فلا يصطدم بمقطع محذوف (404 = السبب الرئيسي للتقطيع
+      // وإعادة التحميل عند البعيدين). التكلفة مساحة قرص فقط، لا حمل CPU.
       args.push(
 
         '-f', 'hls',
 
         '-hls_time', hlsTime,
 
-        '-hls_list_size', '10',
+        '-hls_list_size', '12',
 
-        '-hls_delete_threshold', '4',
+        '-hls_delete_threshold', '12',
 
         '-hls_flags', 'delete_segments+omit_endlist+program_date_time+independent_segments+temp_file',
 
