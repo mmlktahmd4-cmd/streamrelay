@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import Hls from 'hls.js';
+import { Maximize, Minimize } from 'lucide-react';
 
 function levelLabel(level) {
   if (!level) return '';
@@ -9,6 +10,7 @@ function levelLabel(level) {
 }
 
 export default function HlsPlayer({ src, autoPlay = true, onDemand = false, starting = false }) {
+  const rootRef = useRef(null);
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
   const [error, setError] = useState('');
@@ -16,6 +18,7 @@ export default function HlsPlayer({ src, autoPlay = true, onDemand = false, star
   const [levels, setLevels] = useState([]);
   const [currentLevel, setCurrentLevel] = useState(-1);
   const [autoMode, setAutoMode] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   // الدقّة الفعلية المُشغّلة (تُقرأ من عنصر الفيديو — تتغيّر لحظياً مع تبديل ABR)
   const [playingHeight, setPlayingHeight] = useState(0);
 
@@ -25,6 +28,35 @@ export default function HlsPlayer({ src, autoPlay = true, onDemand = false, star
     hls.currentLevel = index; // -1 = تلقائي
     setAutoMode(index === -1);
   };
+
+  // ملء الشاشة على الحاوية كاملة (وليس عنصر الفيديو وحده) حتى يبقى شريط اختيار
+  // الجودة ظاهراً للمشترك أثناء المشاهدة بملء الشاشة.
+  const toggleFullscreen = () => {
+    const el = rootRef.current;
+    if (!el) return;
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
+      (document.exitFullscreen || document.webkitExitFullscreen)?.call(document);
+    } else if (el.requestFullscreen) {
+      el.requestFullscreen().catch(() => {});
+    } else if (el.webkitRequestFullscreen) {
+      el.webkitRequestFullscreen();
+    } else {
+      // iOS Safari لا يدعم ملء شاشة الحاوية — نرجع لعنصر الفيديو
+      videoRef.current?.webkitEnterFullscreen?.();
+    }
+  };
+
+  useEffect(() => {
+    const onFsChange = () => {
+      setIsFullscreen(!!(document.fullscreenElement || document.webkitFullscreenElement));
+    };
+    document.addEventListener('fullscreenchange', onFsChange);
+    document.addEventListener('webkitfullscreenchange', onFsChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', onFsChange);
+      document.removeEventListener('webkitfullscreenchange', onFsChange);
+    };
+  }, []);
 
   useEffect(() => {
     setWaiting(!!starting);
@@ -178,9 +210,9 @@ export default function HlsPlayer({ src, autoPlay = true, onDemand = false, star
     : (currentLevel >= 0 && levels[currentLevel] ? levelLabel(levels[currentLevel]) : '—');
 
   return (
-    <div className="w-full">
-      <div className="relative w-full bg-black aspect-video">
-        <video ref={videoRef} controls className="w-full h-full" playsInline />
+    <div ref={rootRef} className={isFullscreen ? 'w-full h-full flex flex-col bg-black' : 'w-full'}>
+      <div className={isFullscreen ? 'relative flex-1 min-h-0 bg-black' : 'relative w-full bg-black aspect-video'}>
+        <video ref={videoRef} controls className="w-full h-full object-contain" playsInline />
 
         {waiting && !error && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/75 text-slate-200 text-sm px-4 text-center">
@@ -194,8 +226,8 @@ export default function HlsPlayer({ src, autoPlay = true, onDemand = false, star
         )}
       </div>
 
-      {/* شريط الجودة أسفل المشغّل — لا يأكل من مساحة الفيديو */}
-      <div className="flex items-center justify-between gap-3 bg-slate-900 px-3 py-2 text-xs text-slate-200 rounded-b-lg flex-wrap">
+      {/* شريط الجودة أسفل المشغّل — لا يأكل من مساحة الفيديو، ويبقى ظاهراً في ملء الشاشة */}
+      <div className={`flex items-center justify-between gap-3 bg-slate-900 px-3 py-2 text-xs text-slate-200 flex-wrap ${isFullscreen ? 'shrink-0' : 'rounded-b-lg'}`}>
         <div className="flex items-center gap-2">
           <span className="text-slate-400">الجودة الحالية:</span>
           <span className="font-bold text-teal-400">{qualityText}</span>
@@ -204,27 +236,40 @@ export default function HlsPlayer({ src, autoPlay = true, onDemand = false, star
           )}
         </div>
 
-        {levels.length > 1 && (
-          <div className="flex items-center gap-1 flex-wrap">
-            <button
-              type="button"
-              onClick={() => selectLevel(-1)}
-              className={`rounded px-2 py-1 transition-colors ${autoMode ? 'bg-teal-600 text-white font-bold' : 'bg-slate-700 hover:bg-slate-600 text-slate-200'}`}
-            >
-              تلقائي
-            </button>
-            {levels.map((lvl, i) => (
+        <div className="flex items-center gap-2 flex-wrap">
+          {levels.length > 1 && (
+            <div className="flex items-center gap-1 flex-wrap">
+              <span className="text-slate-400 ml-1">اختر الجودة:</span>
               <button
                 type="button"
-                key={i}
-                onClick={() => selectLevel(i)}
-                className={`rounded px-2 py-1 transition-colors ${!autoMode && currentLevel === i ? 'bg-teal-600 text-white font-bold' : 'bg-slate-700 hover:bg-slate-600 text-slate-200'}`}
+                onClick={() => selectLevel(-1)}
+                className={`rounded px-2 py-1 transition-colors ${autoMode ? 'bg-teal-600 text-white font-bold' : 'bg-slate-700 hover:bg-slate-600 text-slate-200'}`}
               >
-                {levelLabel(lvl)}
+                تلقائي
               </button>
-            ))}
-          </div>
-        )}
+              {levels.map((lvl, i) => (
+                <button
+                  type="button"
+                  key={i}
+                  onClick={() => selectLevel(i)}
+                  className={`rounded px-2 py-1 transition-colors ${!autoMode && currentLevel === i ? 'bg-teal-600 text-white font-bold' : 'bg-slate-700 hover:bg-slate-600 text-slate-200'}`}
+                >
+                  {levelLabel(lvl)}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            title={isFullscreen ? 'إنهاء ملء الشاشة' : 'ملء الشاشة'}
+            className="flex items-center gap-1 rounded px-2 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 transition-colors"
+          >
+            {isFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
+            {isFullscreen ? 'إنهاء' : 'ملء الشاشة'}
+          </button>
+        </div>
       </div>
     </div>
   );

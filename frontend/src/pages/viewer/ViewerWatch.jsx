@@ -99,11 +99,14 @@ export default function ViewerWatch() {
   const handleFullscreen = () => {
     const el = playerRef.current;
     if (!el) return;
-    const video = el.querySelector('video');
-    const target = video || el;
-    if (target.requestFullscreen) target.requestFullscreen();
-    else if (target.webkitRequestFullscreen) target.webkitRequestFullscreen();
-    else if (target.webkitEnterFullscreen) target.webkitEnterFullscreen();
+    // ملء شاشة الحاوية كاملة حتى يبقى شريط اختيار الجودة ظاهراً للمشترك.
+    // iOS Safari لا يدعم ملء شاشة الحاوية — نرجع لعنصر الفيديو هناك فقط.
+    if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
+    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+    else {
+      const video = el.querySelector('video');
+      video?.webkitEnterFullscreen?.();
+    }
   };
 
   const handleReload = () => {
