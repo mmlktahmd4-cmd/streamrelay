@@ -31,21 +31,28 @@ function normalizeIp(ip) {
   return String(ip).replace(/^::ffff:/, '');
 }
 
-/** تسجيل حضور مشاهد فقط — لا يُحسب المدير/المشغّل */
+/**
+ * تسجيل حضور مشاهد فقط — لا يُحسب المدير/المشغّل.
+ * المفتاح يتضمّن معرّف الجلسة (sid) حتى يُحسب كل جهاز/عميل على حدة، فيعكس العدد
+ * الحملَ الفعلي (كم جهاز فاتح اللوحة) لا عدد الحسابات — خصوصاً مع تعدّد الأجهزة للحساب.
+ */
 export async function touchViewerPresence(user, meta = {}) {
   if (!user?.id || user.role !== 'viewer') return;
+
+  const sid = user.sid || meta.sid || 'default';
 
   const payload = JSON.stringify({
     userId: user.id,
     username: user.username || user.id,
     role: user.role,
+    sid,
     ip: normalizeIp(meta.ip),
     lastSeen: Date.now(),
   });
 
   try {
     const r = getRedis();
-    await r.set(`${KEY_PREFIX}${user.id}`, payload, 'EX', VIEWER_TTL_SEC);
+    await r.set(`${KEY_PREFIX}${user.id}:${sid}`, payload, 'EX', VIEWER_TTL_SEC);
   } catch (err) {
     log.debug({ err: err.message, userId: user.id }, 'Presence touch failed');
   }
@@ -73,6 +80,7 @@ export async function getOnlineViewers() {
           userId: item.userId,
           username: item.username,
           role: item.role || 'viewer',
+          sid: item.sid || null,
           ip: item.ip || null,
           lastSeen: item.lastSeen || Date.now(),
         });
@@ -91,10 +99,17 @@ export async function getOnlineViewersCount() {
   return viewers.length;
 }
 
-export async function removeViewerPresence(userId) {
+export async function removeViewerPresence(userId, sid = null) {
   if (!userId) return;
   try {
     const r = getRedis();
-    await r.del(`${KEY_PREFIX}${userId}`);
+    if (sid) {
+      await r.del(`${KEY_PREFIX}${userId}:${sid}`);
+      return;
+    }
+    // بلا sid: احذف كل جلسات/أجهزة هذا الحساب (+ المفتاح القديم بلا sid)
+    const keys = await r.keys(`${KEY_PREFIX}${userId}:*`);
+    keys.push(`${KEY_PREFIX}${userId}`);
+    if (keys.length) await r.del(...keys);
   } catch { /* ignore */ }
 }

@@ -253,7 +253,13 @@ export default function Dashboard() {
           sub={bw.total_egress_session_bytes ? formatBytes(bw.total_egress_session_bytes) : 'للمشاهدين'}
           color="red"
         />
-        <StatCard icon={Wifi} label="مشاهدون متصلون" value={data?.online_users || 0} sub="جهاز واحد لكل حساب" color="green" />
+        <StatCard
+          icon={Wifi}
+          label="أجهزة متصلة الآن"
+          value={data?.online_devices ?? data?.online_users ?? 0}
+          sub={`${data?.online_accounts || 0} حساب — الحمل الفعلي`}
+          color="green"
+        />
         <StatCard icon={Users} label="إجمالي الحسابات" value={data?.active_users || 0} color="brand" />
       </div>
 
@@ -331,17 +337,20 @@ export default function Dashboard() {
       {(data?.online_users_list?.length > 0) && (
         <div className="card mb-6">
           <h2 className="text-base font-bold text-slate-800 mb-3 flex items-center gap-2">
-            <Wifi className="w-5 h-5 text-emerald-600" /> المشاهدون المتصلون الآن
+            <Wifi className="w-5 h-5 text-emerald-600" /> الأجهزة المتصلة الآن
+            <span className="text-xs font-normal text-slate-400">
+              ({data.online_users_list.length} جهاز · {data?.online_accounts || 0} حساب)
+            </span>
           </h2>
           <div className="flex flex-wrap gap-2">
             {data.online_users_list.map((u) => (
               <span
-                key={`${u.username}-${u.last_seen}`}
+                key={`${u.username}-${u.sid || u.last_seen}`}
                 className="inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-100 rounded-full text-sm"
               >
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 <span className="font-medium text-slate-800">{u.username}</span>
-                <span className="text-xs text-slate-400">مشاهد</span>
+                <span className="text-xs text-slate-400">جهاز</span>
                 {u.ip && <span className="text-xs font-mono text-slate-400">{u.ip}</span>}
               </span>
             ))}

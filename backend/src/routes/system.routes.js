@@ -112,15 +112,21 @@ export default async function systemRoutes(fastify) {
         getOnlineViewers(),
       ]);
 
+      // عدد الحسابات المميّزة المتصلة (قد يفتح حساب واحد عدة أجهزة)
+      const onlineAccounts = new Set(onlineList.map((u) => u.userId)).size;
+
       return {
         channels: channelStats,
         total_channels: Object.values(channelStats).reduce((a, b) => a + b, 0),
         active_users: parseInt(users.rows[0].count, 10),
         online_users: onlineCount,
+        online_devices: onlineCount,
+        online_accounts: onlineAccounts,
         online_users_list: onlineList.map((u) => ({
           username: u.username,
           role: u.role,
           ip: u.ip,
+          sid: u.sid,
           last_seen: new Date(u.lastSeen).toISOString(),
         })),
         logs_24h: parseInt(logs.rows[0].count, 10),

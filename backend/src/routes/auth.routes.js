@@ -100,7 +100,7 @@ export default async function authRoutes(fastify) {
     await authService.updateLastLogin(user.id);
     await authService.logAudit(user.id, 'login', 'user', user.id, request.ip, request.headers['user-agent']);
     await touchViewerPresence(
-      { id: user.id, username: user.username, role: user.role },
+      { id: user.id, username: user.username, role: user.role, sid: sessionId },
       { ip: request.ip }
     );
 
