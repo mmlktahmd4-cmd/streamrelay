@@ -1,11 +1,30 @@
 import { useEffect, useRef, useState } from 'react';
 import Hls from 'hls.js';
 
+function levelLabel(level) {
+  if (!level) return '';
+  if (level.height) return `${level.height}p`;
+  if (level.bitrate) return `${Math.round(level.bitrate / 1000)}k`;
+  return 'تلقائي';
+}
+
 export default function HlsPlayer({ src, autoPlay = true, onDemand = false, starting = false }) {
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
   const [error, setError] = useState('');
   const [waiting, setWaiting] = useState(!!starting);
+  const [levels, setLevels] = useState([]);
+  const [currentLevel, setCurrentLevel] = useState(-1);
+  const [autoMode, setAutoMode] = useState(true);
+  const [qualityMenuOpen, setQualityMenuOpen] = useState(false);
+
+  const selectLevel = (index) => {
+    const hls = hlsRef.current;
+    if (!hls) return;
+    hls.currentLevel = index; // -1 = تلقائي
+    setAutoMode(index === -1);
+    setQualityMenuOpen(false);
+  };
 
   useEffect(() => {
     setWaiting(!!starting);
@@ -16,6 +35,10 @@ export default function HlsPlayer({ src, autoPlay = true, onDemand = false, star
     if (!video || !src) return;
 
     setError('');
+    setLevels([]);
+    setCurrentLevel(-1);
+    setAutoMode(true);
+    setQualityMenuOpen(false);
     let retryTimer = null;
     let fatalRetries = 0;
     let mediaErrorCount = 0;
@@ -69,11 +92,18 @@ export default function HlsPlayer({ src, autoPlay = true, onDemand = false, star
       hls.loadSource(src);
       hls.attachMedia(video);
 
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+      hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
         fatalRetries = 0;
         mediaErrorCount = 0;
         setWaiting(false);
+        setLevels((data?.levels || hls.levels || []).map((l) => ({ height: l.height, bitrate: l.bitrate })));
+        setAutoMode(hls.autoLevelEnabled);
         if (autoPlay) video.play().catch(() => {});
+      });
+
+      // تتبّع الجودة المُشغّلة فعلياً (ترتفع/تنخفض تلقائياً حسب سرعة النت)
+      hls.on(Hls.Events.LEVEL_SWITCHED, (_, data) => {
+        if (typeof data?.level === 'number') setCurrentLevel(data.level);
       });
 
       hls.on(Hls.Events.ERROR, (_, data) => {
@@ -130,9 +160,54 @@ export default function HlsPlayer({ src, autoPlay = true, onDemand = false, star
     };
   }, [src, autoPlay, onDemand]);
 
+  const activeLabel = currentLevel >= 0 && levels[currentLevel]
+    ? levelLabel(levels[currentLevel])
+    : '';
+  const badgeText = levels.length
+    ? (autoMode ? `تلقائي${activeLabel ? ` · ${activeLabel}` : ''}` : (activeLabel || 'يدوي'))
+    : '';
+
   return (
     <div className="relative w-full bg-black aspect-video">
       <video ref={videoRef} controls className="w-full h-full" playsInline />
+
+      {/* مؤشّر الجودة الحالية + اختيار يدوي — للتأكد أن البث متعدد الجودات يعمل */}
+      {levels.length > 0 && (
+        <div className="absolute top-2 left-2 z-10">
+          <button
+            type="button"
+            onClick={() => levels.length > 1 && setQualityMenuOpen((v) => !v)}
+            className={`flex items-center gap-1 rounded-md bg-black/65 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur-sm ${levels.length > 1 ? 'hover:bg-black/80 cursor-pointer' : 'cursor-default'}`}
+            title="الجودة الحالية"
+          >
+            <span>{badgeText}</span>
+            {levels.length > 1 && <span className="text-white/60">▾</span>}
+          </button>
+
+          {qualityMenuOpen && levels.length > 1 && (
+            <div className="mt-1 min-w-[120px] overflow-hidden rounded-md bg-black/85 backdrop-blur-sm text-white text-xs shadow-lg">
+              <button
+                type="button"
+                onClick={() => selectLevel(-1)}
+                className={`block w-full px-3 py-2 text-right hover:bg-white/10 ${autoMode ? 'text-teal-400 font-bold' : ''}`}
+              >
+                تلقائي{autoMode && activeLabel ? ` (${activeLabel})` : ''}
+              </button>
+              {levels.map((lvl, i) => (
+                <button
+                  type="button"
+                  key={i}
+                  onClick={() => selectLevel(i)}
+                  className={`block w-full px-3 py-2 text-right hover:bg-white/10 ${!autoMode && currentLevel === i ? 'text-teal-400 font-bold' : ''}`}
+                >
+                  {levelLabel(lvl)}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {waiting && !error && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/75 text-slate-200 text-sm px-4 text-center">
           {onDemand ? 'جاري تشغيل القناة على سيرفر البث...' : 'جاري تحميل البث...'}
