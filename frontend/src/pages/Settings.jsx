@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react';
-import { getBrandingSettings, saveBrandingSettings } from '../api/client';
+import {
+  getBrandingSettings,
+  saveBrandingSettings,
+  getStreamingSettings,
+  saveStreamingSettings,
+} from '../api/client';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
-import { Settings as SettingsIcon, RotateCcw, LayoutGrid, Image, List, Rows3, Check } from 'lucide-react';
+import { Settings as SettingsIcon, RotateCcw, LayoutGrid, Image, List, Rows3, Check, Gauge } from 'lucide-react';
 
 const DEFAULTS = {
   app_title: 'StreamRelay TV',
@@ -23,16 +28,39 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [form, setForm] = useState(DEFAULTS);
+  const [abrEnabled, setAbrEnabled] = useState(false);
+  const [abrSaving, setAbrSaving] = useState(false);
+  const [abrMessage, setAbrMessage] = useState('');
 
   const loadSettings = async () => {
     try {
       const { data } = await getBrandingSettings();
       setForm({ ...DEFAULTS, ...data });
     } catch { /* ignore */ }
+    try {
+      const { data } = await getStreamingSettings();
+      setAbrEnabled(data?.abr_enabled === true);
+    } catch { /* ignore */ }
     setLoading(false);
   };
 
   useEffect(() => { loadSettings(); }, []);
+
+  const handleToggleAbr = async () => {
+    const next = !abrEnabled;
+    setAbrSaving(true);
+    setAbrMessage('جاري الحفظ...');
+    try {
+      const { data } = await saveStreamingSettings({ abr_enabled: next });
+      setAbrEnabled(data?.abr_enabled === true);
+      setAbrMessage(next
+        ? 'تم تفعيل البث متعدد الجودات — يُطبَّق على القنوات عند إعادة تشغيلها'
+        : 'تم إيقاف البث متعدد الجودات — يُطبَّق عند إعادة تشغيل القنوات');
+    } catch (err) {
+      setAbrMessage(err.response?.data?.error || 'تعذّر حفظ الإعداد');
+    }
+    setAbrSaving(false);
+  };
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -165,6 +193,55 @@ export default function Settings() {
           </p>
         )}
       </form>
+
+      <div className="card mt-6">
+        <h2 className="font-bold text-slate-800 flex items-center gap-2">
+          <Gauge className="w-5 h-5 text-teal-600" />
+          البث متعدد الجودات (مثل يوتيوب)
+        </h2>
+        <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+          عند التفعيل تُبثّ كل قناة بعدة جودات (الأصل + 480p + 240p)، وينزل مشغّل المشترك
+          تلقائياً لجودة أقل عند ضعف النت بدل التقطيع. يقلّل تقطيع المشتركين البعيدين بشكل كبير.
+        </p>
+        <div className="mt-3 rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800 leading-relaxed">
+          ملاحظة: هذه الميزة تستهلك معالج (CPU) السيرفر لأنها تُعيد ترميز الجودات الأدنى.
+          فعّلها على السيرفر الداخلي الذي يعاني من التقطيع، وأطفئها على السيرفر الخارجي القوي
+          الذي لا يحتاجها. التغيير يُطبَّق على كل قناة عند إعادة تشغيلها.
+        </div>
+
+        <div className="mt-4 flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4">
+          <div>
+            <p className="font-bold text-slate-800 text-sm">
+              {abrEnabled ? 'مُفعّل' : 'مُطفأ'}
+            </p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {abrEnabled ? 'القنوات تُبثّ بعدة جودات' : 'القنوات تُبثّ بجودة المصدر فقط (بدون حمل CPU)'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleToggleAbr}
+            disabled={abrSaving}
+            role="switch"
+            aria-checked={abrEnabled}
+            className={`relative inline-flex h-7 w-14 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${
+              abrEnabled ? 'bg-teal-600' : 'bg-slate-300'
+            }`}
+          >
+            <span
+              className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                abrEnabled ? 'translate-x-8' : 'translate-x-1'
+              }`}
+            />
+          </button>
+        </div>
+
+        {abrMessage && (
+          <p className={`text-sm mt-3 ${abrMessage.includes('تعذّر') ? 'text-red-600' : 'text-emerald-700'}`}>
+            {abrMessage}
+          </p>
+        )}
+      </div>
 
       <div className="card mt-6 bg-slate-50">
         <h3 className="text-sm font-bold text-slate-700 mb-3">معاينة</h3>

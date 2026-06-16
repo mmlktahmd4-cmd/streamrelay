@@ -6,6 +6,7 @@ import { getPublicUrls } from '../services/public-url.service.js';
 import { getOnlineViewersCount, getOnlineViewers } from '../services/online-presence.service.js';
 import { getSiteConfig, saveSiteConfig } from '../services/site-config.service.js';
 import { getBranding, saveBranding } from '../services/branding.service.js';
+import { getStreamingConfig, saveStreamingConfig } from '../services/streaming-config.service.js';
 import { getClusterSummary } from '../services/server.service.js';
 import { getBandwidthStats } from '../services/bandwidth.service.js';
 import { getServerIpConfig, applyServerIp } from '../services/server-ip.service.js';
@@ -207,6 +208,21 @@ export default async function systemRoutes(fastify) {
     protectedRoutes.put('/settings/branding', {
       preHandler: [requireMinRole('admin'), validate(brandingSettingsSchema)],
     }, async (request) => saveBranding(request.body));
+
+    // إعدادات البث (البث متعدد الجودات ABR) — قراءة/تحديث بزرّ من اللوحة
+    protectedRoutes.get('/settings/streaming', {
+      preHandler: [requireMinRole('operator')],
+    }, async () => getStreamingConfig());
+
+    protectedRoutes.put('/settings/streaming', {
+      preHandler: [requireMinRole('admin')],
+    }, async (request, reply) => {
+      try {
+        return await saveStreamingConfig(request.body || {});
+      } catch (err) {
+        return reply.status(400).send({ error: err.message || 'تعذّر حفظ إعدادات البث' });
+      }
+    });
 
     // Logs
     protectedRoutes.get('/logs', async (request) => {

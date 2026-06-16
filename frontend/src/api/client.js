@@ -307,6 +307,9 @@ export const getAppDownloadUrl = () => `${API_BASE}/app/download`;
 export const getBrandingSettings = () => api.get('/settings/branding');
 export const saveBrandingSettings = (data) => api.put('/settings/branding', data);
 
+export const getStreamingSettings = () => api.get('/settings/streaming');
+export const saveStreamingSettings = (data) => api.put('/settings/streaming', data);
+
 export const getServers = (includeInactive = false) => api.get('/servers', {
   params: includeInactive ? { all: 1 } : {},
 });

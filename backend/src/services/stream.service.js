@@ -168,9 +168,17 @@ export async function scheduleAutoRestart(channelId) {
 
 
 
-function buildFFmpegArgs(channel, sourceOverride = null) {
+function buildFFmpegArgs(channel, sourceOverride = null, opts = {}) {
 
   const sourceUrl = String(sourceOverride || channel.source_url || '').trim();
+
+  // البث متعدد الجودات (ABR) — يُفعَّل عبر إعداد عام في اللوحة، ولا ينطبق إلا على
+  // مخرجات HLS. عند التفعيل: المتغيّر الأعلى نسخة طبق الأصل (copy = بدون أي تكلفة
+  // CPU) + جودتان أدنى (480p و240p) بترميز خفيف. المشغّل ينزل تلقائياً للجودة الأقل
+  // عند ضعف النت بدل التقطيع (مثل يوتيوب). نتجنّبه مع الترميز اليدوي لتفادي التعارض.
+  const useAbr = opts.abrEnabled === true
+    && channel.output_format === 'hls'
+    && !channel.transcode_enabled;
 
   const args = [
 
@@ -272,7 +280,38 @@ function buildFFmpegArgs(channel, sourceOverride = null) {
 
 
 
-  if (channel.transcode_enabled) {
+  if (useAbr) {
+
+    // سلّم ABR: 3 نسخ من نفس المصدر. v0 = الأصل (copy، بلا تكلفة)، v1 = 480p، v2 = 240p.
+    // الترميز للجودتين الأدنى فقط (~0.4-0.5 نواة لكل قناة بـ veryfast).
+    args.push(
+      '-map', '0:v:0', '-map', '0:a:0',
+      '-map', '0:v:0', '-map', '0:a:0',
+      '-map', '0:v:0', '-map', '0:a:0',
+    );
+
+    // v0 — الأصل بدون ترميز
+    args.push('-c:v:0', 'copy', '-c:a:0', 'copy');
+
+    // v1 — 480p بسقف بِترﻱت ~1.2 ميجابت
+    args.push(
+      '-c:v:1', 'libx264', '-preset:v:1', 'veryfast', '-profile:v:1', 'main',
+      '-filter:v:1', 'scale=-2:480',
+      '-b:v:1', '1200k', '-maxrate:v:1', '1400k', '-bufsize:v:1', '2000k',
+      '-g:v:1', '120', '-keyint_min:v:1', '120', '-sc_threshold:v:1', '0',
+      '-c:a:1', 'aac', '-b:a:1', '128k', '-ac:1', '2',
+    );
+
+    // v2 — 240p بسقف بِترﻱت ~400 كيلوبت (لأضعف الشبكات)
+    args.push(
+      '-c:v:2', 'libx264', '-preset:v:2', 'veryfast', '-profile:v:2', 'baseline',
+      '-filter:v:2', 'scale=-2:240',
+      '-b:v:2', '400k', '-maxrate:v:2', '500k', '-bufsize:v:2', '800k',
+      '-g:v:2', '120', '-keyint_min:v:2', '120', '-sc_threshold:v:2', '0',
+      '-c:a:2', 'aac', '-b:a:2', '64k', '-ac:2', '2',
+    );
+
+  } else if (channel.transcode_enabled) {
 
     args.push('-c:v', profile.video_codec || 'libx264');
 
@@ -321,12 +360,23 @@ function buildFFmpegArgs(channel, sourceOverride = null) {
         '-hls_flags', 'delete_segments+omit_endlist+program_date_time+independent_segments+temp_file',
 
         '-hls_start_number_source', 'epoch',
-
-        '-hls_segment_filename', path.join(hlsDir, 'seg_%03d.ts'),
-
-        path.join(hlsDir, 'index.m3u8')
-
       );
+
+      if (useAbr) {
+        // قائمة رئيسية باسم index.m3u8 (نقطة الدخول المعتادة) تشير إلى v0/v1/v2.
+        // المشغّل (hls.js) يقرأها ويختار الجودة تلقائياً حسب سرعة النت.
+        args.push(
+          '-master_pl_name', 'index.m3u8',
+          '-var_stream_map', 'v:0,a:0 v:1,a:1 v:2,a:2',
+          '-hls_segment_filename', path.join(hlsDir, 'v%v_seg_%03d.ts'),
+          path.join(hlsDir, 'v%v.m3u8')
+        );
+      } else {
+        args.push(
+          '-hls_segment_filename', path.join(hlsDir, 'seg_%03d.ts'),
+          path.join(hlsDir, 'index.m3u8')
+        );
+      }
 
       break;
 
@@ -410,7 +460,9 @@ async function waitForHlsReady(channelId, procPid, timeoutMs) {
       const stat = await fs.stat(manifest);
       if (stat.size > 32) {
         const content = await fs.readFile(manifest, 'utf8');
-        if (content.includes('#EXTM3U') && /\.ts|\.m4s/.test(content)) {
+        // قائمة وسائط عادية (تحوي مقاطع) أو قائمة رئيسية ABR (تحوي EXT-X-STREAM-INF)
+        if (content.includes('#EXTM3U')
+          && (/\.ts|\.m4s/.test(content) || content.includes('#EXT-X-STREAM-INF'))) {
           return true;
         }
       }
@@ -501,9 +553,12 @@ export async function startStream(channelId, options = {}) {
 
 
 
-  const args = buildFFmpegArgs(channel, options.sourceOverride || null);
+  const { isAbrEnabled } = await import('./streaming-config.service.js');
+  const abrEnabled = await isAbrEnabled();
 
-  log.info({ channelId, slug: channel.slug, args: args.join(' ') }, 'Starting FFmpeg');
+  const args = buildFFmpegArgs(channel, options.sourceOverride || null, { abrEnabled });
+
+  log.info({ channelId, slug: channel.slug, abr: abrEnabled, args: args.join(' ') }, 'Starting FFmpeg');
 
 
 
