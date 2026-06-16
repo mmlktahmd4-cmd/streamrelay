@@ -153,6 +153,7 @@ export const createChannelSchema = z.object({
   source_url: sourceUrlField,
   backup_source_url: backupSourceUrlField,
   output_format: z.enum(['hls', 'mpegts', 'rtmp', 'relay']).default('hls'),
+  abr_mode: z.enum(['default', 'off', 'source', 'max_1080', 'max_720', 'max_480', 'max_360']).optional(),
   transcode_enabled: z.boolean().default(false),
   transcode_profile: z.object({
     video_codec: z.string().default('copy'),

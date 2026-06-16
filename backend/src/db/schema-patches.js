@@ -74,6 +74,13 @@ const PATCHES = [
     `,
     optional: true,
   },
+  {
+    id: '011_channels_abr_mode',
+    sql: `
+      ALTER TABLE channels ADD COLUMN IF NOT EXISTS abr_mode VARCHAR(16) NOT NULL DEFAULT 'default';
+    `,
+    optional: true,
+  },
 ];
 
 export async function runSchemaPatches() {

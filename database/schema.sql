@@ -109,6 +109,10 @@ CREATE TABLE channels (
     transcode_enabled   BOOLEAN NOT NULL DEFAULT false,
     transcode_profile   JSONB DEFAULT '{"video_codec":"copy","audio_codec":"copy"}',
 
+    -- تعدّد الجودات (ABR) لكل قناة. 'default' = حسب الإعداد العام، 'off' = جودة واحدة،
+    -- 'source' = الأصل + 480p + 240p، 'max_1080/720/480/360' = سقف أعلى للجودة (بلا تكبير).
+    abr_mode            VARCHAR(16) NOT NULL DEFAULT 'default',
+
     -- Stream state
     status              stream_status NOT NULL DEFAULT 'stopped',
     pid                 INT,

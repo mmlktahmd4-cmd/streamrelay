@@ -168,17 +168,43 @@ export async function scheduleAutoRestart(channelId) {
 
 
 
+// درجات الجودة القياسية لسلّم ABR. كل درجة مُترمَّزة بسقف بِترﻱت مناسب.
+// ملاحظة مهمة: الفلتر scale=-2:min(H,ih) لا يكبّر المصدر أبداً — إذا كان المصدر
+// أقل من H تبقى الدقّة كما هي (قناة 560 تبقى 560، لا تُرفع لـ720/1080).
+const ABR_RUNGS = {
+  1080: { height: 1080, profile: 'high',     vb: '5000k', mr: '5500k', bs: '8000k', ab: '128k' },
+  720:  { height: 720,  profile: 'high',     vb: '2800k', mr: '3200k', bs: '5000k', ab: '128k' },
+  480:  { height: 480,  profile: 'main',     vb: '1200k', mr: '1400k', bs: '2000k', ab: '128k' },
+  360:  { height: 360,  profile: 'main',     vb: '800k',  mr: '900k',  bs: '1400k', ab: '96k'  },
+  240:  { height: 240,  profile: 'baseline', vb: '400k',  mr: '500k',  bs: '800k',  ab: '64k'  },
+};
+
+// يبني سلّم الجودات حسب اختيار المدير لكل قناة. أعلى درجة أولاً.
+// 'source'  → الأصل (نسخة طبق الأصل بلا تكلفة CPU) + 480p + 240p.
+// 'max_*'   → أعلى جودة بسقف محدّد (مُترمَّزة، بلا تكبير فوق المصدر) + درجات أدنى.
+function buildAbrLadder(mode) {
+  switch (mode) {
+    case 'source':   return [{ copy: true }, ABR_RUNGS[480], ABR_RUNGS[240]];
+    case 'max_1080': return [ABR_RUNGS[1080], ABR_RUNGS[480], ABR_RUNGS[240]];
+    case 'max_720':  return [ABR_RUNGS[720], ABR_RUNGS[480], ABR_RUNGS[240]];
+    case 'max_480':  return [ABR_RUNGS[480], ABR_RUNGS[240]];
+    case 'max_360':  return [ABR_RUNGS[360], ABR_RUNGS[240]];
+    default:         return null;
+  }
+}
+
 function buildFFmpegArgs(channel, sourceOverride = null, opts = {}) {
 
   const sourceUrl = String(sourceOverride || channel.source_url || '').trim();
 
-  // البث متعدد الجودات (ABR) — يُفعَّل عبر إعداد عام في اللوحة، ولا ينطبق إلا على
-  // مخرجات HLS. عند التفعيل: المتغيّر الأعلى نسخة طبق الأصل (copy = بدون أي تكلفة
-  // CPU) + جودتان أدنى (480p و240p) بترميز خفيف. المشغّل ينزل تلقائياً للجودة الأقل
-  // عند ضعف النت بدل التقطيع (مثل يوتيوب). نتجنّبه مع الترميز اليدوي لتفادي التعارض.
-  const useAbr = opts.abrEnabled === true
-    && channel.output_format === 'hls'
-    && !channel.transcode_enabled;
+  // البث متعدد الجودات (ABR) — يُختار لكل قناة على حدة (abr_mode)، ولا ينطبق إلا على
+  // مخرجات HLS بدون ترميز يدوي. المشغّل ينزل تلقائياً للجودة الأقل عند ضعف النت بدل
+  // التقطيع (مثل يوتيوب)، ولا يرفع الجودة فوق جودة المصدر أبداً (scale=-2:min(H,ih)).
+  const abrMode = (opts.abrMode && opts.abrMode !== 'off') ? opts.abrMode : null;
+  const ladder = (abrMode && channel.output_format === 'hls' && !channel.transcode_enabled)
+    ? buildAbrLadder(abrMode)
+    : null;
+  const useAbr = Array.isArray(ladder) && ladder.length > 1;
 
   const args = [
 
@@ -282,34 +308,28 @@ function buildFFmpegArgs(channel, sourceOverride = null, opts = {}) {
 
   if (useAbr) {
 
-    // سلّم ABR: 3 نسخ من نفس المصدر. v0 = الأصل (copy، بلا تكلفة)، v1 = 480p، v2 = 240p.
-    // الترميز للجودتين الأدنى فقط (~0.4-0.5 نواة لكل قناة بـ veryfast).
-    args.push(
-      '-map', '0:v:0', '-map', '0:a:0',
-      '-map', '0:v:0', '-map', '0:a:0',
-      '-map', '0:v:0', '-map', '0:a:0',
-    );
+    // سلّم ABR ديناميكي حسب اختيار المدير. كل درجة = نسخة منفصلة من نفس المصدر.
+    // الدرجة الأعلى قد تكون نسخة طبق الأصل (copy، بلا تكلفة CPU) في وضع 'source'،
+    // أو مُترمَّزة بسقف محدّد في أوضاع 'max_*'. كل درجة مُترمَّزة تستخدم
+    // scale=-2:min(H,ih) فلا تتجاوز جودة المصدر أبداً (لا تكبير).
+    ladder.forEach(() => {
+      args.push('-map', '0:v:0', '-map', '0:a:0');
+    });
 
-    // v0 — الأصل بدون ترميز
-    args.push('-c:v:0', 'copy', '-c:a:0', 'copy');
-
-    // v1 — 480p بسقف بِترﻱت ~1.2 ميجابت
-    args.push(
-      '-c:v:1', 'libx264', '-preset:v:1', 'veryfast', '-profile:v:1', 'main',
-      '-filter:v:1', 'scale=-2:480',
-      '-b:v:1', '1200k', '-maxrate:v:1', '1400k', '-bufsize:v:1', '2000k',
-      '-g:v:1', '120', '-keyint_min:v:1', '120', '-sc_threshold:v:1', '0',
-      '-c:a:1', 'aac', '-b:a:1', '128k', '-ac:1', '2',
-    );
-
-    // v2 — 240p بسقف بِترﻱت ~400 كيلوبت (لأضعف الشبكات)
-    args.push(
-      '-c:v:2', 'libx264', '-preset:v:2', 'veryfast', '-profile:v:2', 'baseline',
-      '-filter:v:2', 'scale=-2:240',
-      '-b:v:2', '400k', '-maxrate:v:2', '500k', '-bufsize:v:2', '800k',
-      '-g:v:2', '120', '-keyint_min:v:2', '120', '-sc_threshold:v:2', '0',
-      '-c:a:2', 'aac', '-b:a:2', '64k', '-ac:2', '2',
-    );
+    ladder.forEach((rung, i) => {
+      if (rung.copy) {
+        args.push(`-c:v:${i}`, 'copy', `-c:a:${i}`, 'copy');
+        return;
+      }
+      args.push(
+        `-c:v:${i}`, 'libx264', `-preset:v:${i}`, 'veryfast', `-profile:v:${i}`, rung.profile,
+        // الفاصلة داخل min() مهرَّبة (\\,) كي لا يفسّرها مُحلّل الفلاتر كفاصل بين فلترين
+        `-filter:v:${i}`, `scale=-2:min(${rung.height}\\,ih)`,
+        `-b:v:${i}`, rung.vb, `-maxrate:v:${i}`, rung.mr, `-bufsize:v:${i}`, rung.bs,
+        `-g:v:${i}`, '120', `-keyint_min:v:${i}`, '120', `-sc_threshold:v:${i}`, '0',
+        `-c:a:${i}`, 'aac', `-b:a:${i}`, rung.ab, `-ac:${i}`, '2',
+      );
+    });
 
   } else if (channel.transcode_enabled) {
 
@@ -363,11 +383,12 @@ function buildFFmpegArgs(channel, sourceOverride = null, opts = {}) {
       );
 
       if (useAbr) {
-        // قائمة رئيسية باسم index.m3u8 (نقطة الدخول المعتادة) تشير إلى v0/v1/v2.
-        // المشغّل (hls.js) يقرأها ويختار الجودة تلقائياً حسب سرعة النت.
+        // قائمة رئيسية باسم index.m3u8 (نقطة الدخول المعتادة) تشير إلى كل الدرجات.
+        // المشغّل (hls.js) يقرأها ويختار الجودة تلقائياً حسب سرعة النت، أو يدوياً.
+        const varStreamMap = ladder.map((_, i) => `v:${i},a:${i}`).join(' ');
         args.push(
           '-master_pl_name', 'index.m3u8',
-          '-var_stream_map', 'v:0,a:0 v:1,a:1 v:2,a:2',
+          '-var_stream_map', varStreamMap,
           '-hls_segment_filename', path.join(hlsDir, 'v%v_seg_%03d.ts'),
           path.join(hlsDir, 'v%v.m3u8')
         );
@@ -553,12 +574,17 @@ export async function startStream(channelId, options = {}) {
 
 
 
+  // وضع تعدّد الجودات لكل قناة: 'default' يرجع للإعداد العام (مفعّل = 'source').
   const { isAbrEnabled } = await import('./streaming-config.service.js');
-  const abrEnabled = await isAbrEnabled();
+  const rawMode = channel.abr_mode || 'default';
+  let abrMode = rawMode;
+  if (rawMode === 'default') {
+    abrMode = (await isAbrEnabled()) ? 'source' : 'off';
+  }
 
-  const args = buildFFmpegArgs(channel, options.sourceOverride || null, { abrEnabled });
+  const args = buildFFmpegArgs(channel, options.sourceOverride || null, { abrMode });
 
-  log.info({ channelId, slug: channel.slug, abr: abrEnabled, args: args.join(' ') }, 'Starting FFmpeg');
+  log.info({ channelId, slug: channel.slug, abrMode, args: args.join(' ') }, 'Starting FFmpeg');
 
 
 

@@ -18,6 +18,7 @@ const LIVE_DEFAULT = {
   backup_source_url: '',
   output_format: 'hls',
   category_id: '',
+  abr_mode: 'default',
   transcode_enabled: false,
   auto_restart: true,
   on_demand: false,
@@ -60,6 +61,7 @@ export default function ChannelForm() {
           backup_source_url: data.backup_source_url || '',
           output_format: data.output_format || 'hls',
           category_id: data.category_id || '',
+          abr_mode: data.abr_mode || 'default',
           transcode_enabled: data.transcode_enabled || false,
           auto_restart: data.auto_restart !== false,
           on_demand: !!data.on_demand,
@@ -229,6 +231,26 @@ export default function ChannelForm() {
                 ))}
               </select>
               <p className="text-xs text-slate-500 mt-1">اختر سيرفراً محدداً أو اترك «تلقائي» للتوزيع الذكي (السيرفرات المعلّقة غير متاحة)</p>
+            </div>
+
+            <div>
+              <label className="label">جودة البث (تعدّد الجودات مثل يوتيوب)</label>
+              <select className="input" name="abr_mode" value={form.abr_mode} onChange={handleChange} disabled={form.output_format !== 'hls' || form.transcode_enabled}>
+                <option value="default">افتراضي (حسب الإعداد العام للوحة)</option>
+                <option value="off">جودة واحدة فقط (نسخة المصدر — أخفّ على السيرفر)</option>
+                <option value="source">تلقائي حسب المصدر (الأصل + 480p + 240p)</option>
+                <option value="max_1080">حتى 1080p (الأصل لا يُرفع فوقه + 480p + 240p)</option>
+                <option value="max_720">حتى 720p + 480p + 240p</option>
+                <option value="max_480">حتى 480p + 240p</option>
+                <option value="max_360">حتى 360p + 240p</option>
+              </select>
+              <p className="text-xs text-slate-500 mt-1">
+                المشغّل ينزل تلقائياً للجودة الأقل عند ضعف نت المشترك بدل التقطيع، ويمكنه اختيار الجودة يدوياً.
+                النظام <strong>لا يرفع الجودة فوق جودة المصدر أبداً</strong> (قناة 560 تبقى 560). كل جودة إضافية تستهلك معالجة السيرفر، فاختر السقف بحكمة.
+              </p>
+              {(form.output_format !== 'hls' || form.transcode_enabled) && (
+                <p className="text-xs text-amber-600 mt-1">تعدّد الجودات يعمل فقط مع إخراج HLS وبدون «تفعيل Transcoding» اليدوي.</p>
+              )}
             </div>
 
             <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4 space-y-3">

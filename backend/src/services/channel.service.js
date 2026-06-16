@@ -20,7 +20,7 @@ function normalizeTranscodeProfile(value) {
 }
 
 function sourceConfigChanged(before, data) {
-  const scalarKeys = ['source_url', 'backup_source_url', 'source_type', 'transcode_enabled'];
+  const scalarKeys = ['source_url', 'backup_source_url', 'source_type', 'transcode_enabled', 'abr_mode'];
   for (const key of scalarKeys) {
     if (data[key] === undefined) continue;
     if (key === 'transcode_enabled') {
@@ -174,8 +174,8 @@ export async function createChannel(data) {
     `INSERT INTO channels (
        name, slug, description, logo_url, category_id, source_type, source_url,
        backup_source_url, output_format, output_url, transcode_enabled, transcode_profile,
-       auto_restart, epg_id, sort_order, is_public, server_id, on_demand
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+       auto_restart, epg_id, sort_order, is_public, server_id, on_demand, abr_mode
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
      RETURNING *`,
     [
       data.name, slug, data.description || null, data.logo_url || null,
@@ -187,6 +187,7 @@ export async function createChannel(data) {
       data.sort_order || 0, data.is_public || false,
       data.server_id || null,
       !!data.on_demand,
+      data.abr_mode || 'default',
     ]
   );
   const row = result.rows[0];
@@ -209,6 +210,7 @@ export async function updateChannel(id, data) {
     'name', 'description', 'logo_url', 'category_id', 'source_type', 'source_url',
     'backup_source_url', 'output_format', 'transcode_enabled', 'transcode_profile',
     'auto_restart', 'epg_id', 'sort_order', 'is_active', 'is_public', 'server_id', 'on_demand',
+    'abr_mode',
   ];
 
   const sets = [];
@@ -713,6 +715,7 @@ export async function duplicateChannel(id) {
     description: source.description,
     transcode_enabled: source.transcode_enabled,
     transcode_profile: parseTranscodeProfile(source.transcode_profile),
+    abr_mode: source.abr_mode || 'default',
     auto_restart: source.auto_restart,
     on_demand: source.on_demand,
     is_public: source.is_public,
