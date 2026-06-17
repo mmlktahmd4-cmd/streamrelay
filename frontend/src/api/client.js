@@ -208,7 +208,9 @@ export const updateMovie = (id, data) => api.put(`/categories/movies/${id}`, dat
 export const uploadMovie = async (categoryId, file, { name, description, is_public, poster_url, onProgress } = {}) => {
   const CHUNK_SIZE = 8 * 1024 * 1024;
   const uploadConfig = {
-    timeout: 900000,
+    // مهلة لكل قطعة (8MB) — كافية لاتصال بطيء جداً، ومحدودة كي تتعافى عبر إعادة
+    // المحاولة بدل التجمّد طويلاً لو تعطّل طلب واحد.
+    timeout: 300000,
     maxBodyLength: Infinity,
     maxContentLength: Infinity,
     transformRequest: [(data, headers) => {
@@ -231,27 +233,46 @@ export const uploadMovie = async (categoryId, file, { name, description, is_publ
   const uploadId = session.upload_id;
   const chunkSize = session.chunk_size || CHUNK_SIZE;
   const totalChunks = session.total_chunks || Math.ceil(file.size / chunkSize);
-  let uploadedBytes = 0;
   const chunkUrl = `/categories/${categoryId}/movies/upload/session/${uploadId}/chunk`;
 
   try {
-    for (let index = 0; index < totalChunks; index += 1) {
+    // حلقة ذاتية الإصلاح: نتبع رقم القطعة الذي يؤكّده السيرفر (received_chunks/expected)
+    // بدل افتراض التسلسل، فلو ضاعت استجابة أو وردت قطعة خارج الترتيب نستأنف تلقائياً.
+    let index = 0;
+    let guard = 0;
+    const maxIterations = totalChunks * 5 + 20;
+
+    while (index < totalChunks) {
+      if (++guard > maxIterations) {
+        throw new Error('تعذّر إكمال الرفع بعد عدة محاولات — تحقّق من الاتصال وحاول مجدداً');
+      }
+
       const start = index * chunkSize;
       const blob = file.slice(start, Math.min(start + chunkSize, file.size));
       const form = new FormData();
       form.append('chunk_index', String(index));
       form.append('chunk', blob, `chunk-${index}`);
 
-      await postUploadChunk(chunkUrl, form, uploadConfig, (e) => {
+      const baseBytes = index * chunkSize;
+      const res = await postUploadChunk(`${chunkUrl}?index=${index}`, form, uploadConfig, (e) => {
         if (onProgress && e.total) {
-          const current = uploadedBytes + e.loaded;
+          const current = baseBytes + e.loaded;
           onProgress(Math.min(99, Math.round((current / file.size) * 100)));
         }
       });
 
-      uploadedBytes += blob.size;
+      const data = res?.data || {};
+      // السيرفر يُرجع عدد القطع المستلمة فعلياً — نتبعه (يشمل حالات إعادة المزامنة)
+      if (Number.isInteger(data.received_chunks)) {
+        index = data.received_chunks;
+      } else if (Number.isInteger(data.expected)) {
+        index = data.expected;
+      } else {
+        index += 1;
+      }
+
       if (onProgress) {
-        onProgress(Math.min(99, Math.round((uploadedBytes / file.size) * 100)));
+        onProgress(Math.min(99, Math.round(((index * chunkSize) / file.size) * 100)));
       }
     }
 

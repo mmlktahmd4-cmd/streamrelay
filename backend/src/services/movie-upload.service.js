@@ -111,27 +111,75 @@ export async function createUploadSession({
   };
 }
 
-export async function writeUploadChunk({ uploadId, categoryId, chunkIndex, fileStream }) {
+/** يُفرّغ دفق الملف الوارد بأمان حتى لا يتجمّد الطلب عند تخطّي قطعة */
+function drainStream(stream) {
+  try {
+    if (stream && typeof stream.resume === 'function') stream.resume();
+  } catch { /* ignore */ }
+}
+
+function syncResponse(meta, extra = {}) {
+  return {
+    received_chunks: meta.receivedChunks,
+    total_chunks: meta.totalChunks,
+    bytes_written: meta.bytesWritten,
+    complete: meta.receivedChunks >= meta.totalChunks,
+    // expected = القطعة التالية المطلوبة — يستخدمها العميل لإعادة المزامنة
+    expected: meta.receivedChunks,
+    ...extra,
+  };
+}
+
+export function getUploadStatus({ uploadId, categoryId }) {
   const meta = loadMeta(uploadId);
   if (meta.categoryId !== categoryId) {
     throw new Error('جلسة الرفع غير صالحة');
   }
+  return syncResponse(meta);
+}
+
+export async function writeUploadChunk({ uploadId, categoryId, chunkIndex, fileStream }) {
+  let meta;
+  try {
+    meta = loadMeta(uploadId);
+  } catch (err) {
+    drainStream(fileStream);
+    throw err;
+  }
+
+  if (meta.categoryId !== categoryId) {
+    drainStream(fileStream);
+    throw new Error('جلسة الرفع غير صالحة');
+  }
   if (Date.now() - meta.createdAt > SESSION_TTL_MS) {
+    drainStream(fileStream);
     throw new Error('انتهت جلسة الرفع — ابدأ من جديد');
   }
 
   const index = Number(chunkIndex);
   if (!Number.isInteger(index) || index < 0 || index >= meta.totalChunks) {
+    drainStream(fileStream);
     throw new Error('رقم القطعة غير صالح');
   }
+
+  // إعادة مزامنة بدل الفشل: القطعة مستلمة مسبقاً (ضاعت استجابتها) أو وردت خارج
+  // الترتيب. نُفرّغ الدفق ونُخبر العميل بالقطعة المطلوبة فعلاً ليُكمل من هناك —
+  // هذا يجعل الرفع يشفى ذاتياً من أي انقطاع شبكة بدل التوقف.
   if (index !== meta.receivedChunks) {
-    throw new Error(`يُتوقع القطعة ${meta.receivedChunks} وليس ${index}`);
+    drainStream(fileStream);
+    return syncResponse(meta, { resync: true });
   }
 
   const expectedStart = index * meta.chunkSize;
   const currentSize = fs.statSync(partPath(uploadId)).size;
   if (currentSize !== expectedStart) {
-    throw new Error('تعارض في حجم الملف — أعد الرفع من البداية');
+    // إصلاح ذاتي: أعد الملف إلى آخر حدّ قطعة صحيح وأعد المزامنة
+    const safeSize = meta.receivedChunks * meta.chunkSize;
+    try { fs.truncateSync(partPath(uploadId), safeSize); } catch { /* ignore */ }
+    meta.bytesWritten = safeSize;
+    saveMeta(uploadId, meta);
+    drainStream(fileStream);
+    return syncResponse(meta, { resync: true });
   }
 
   const maxChunkBytes = index === meta.totalChunks - 1
@@ -159,6 +207,7 @@ export async function writeUploadChunk({ uploadId, categoryId, chunkIndex, fileS
     total_chunks: meta.totalChunks,
     bytes_written: meta.bytesWritten,
     complete: meta.receivedChunks >= meta.totalChunks,
+    expected: meta.receivedChunks,
   };
 }
 

@@ -64,35 +64,52 @@ export default async function categoryRoutes(fastify) {
     config: uploadRouteConfig,
   }, async (request, reply) => {
     try {
-      const fields = {};
-      let chunkStream = null;
+      // رقم القطعة من الـ query (متاح فوراً قبل قراءة الملف) مع دعم الحقل القديم.
+      let chunkIndex = request.query?.index;
+      let result = null;
 
+      // مهم جداً: نستهلك دفق الملف *داخل* الحلقة فور الوصول إليه. تخزين الدفق
+      // واستهلاكه بعد انتهاء الحلقة يسبب تجمّداً (deadlock) في @fastify/multipart —
+      // إذ لا يستطيع المُحلّل تجاوز جزء الملف حتى يُقرأ، فيتوقف الطلب عند قطعة عشوائية.
       for await (const part of request.parts()) {
         if (part.type === 'file') {
           if (part.fieldname === 'chunk') {
-            chunkStream = part.file;
+            result = await movieUpload.writeUploadChunk({
+              uploadId: request.params.uploadId,
+              categoryId: request.params.id,
+              chunkIndex,
+              fileStream: part.file,
+            });
           } else {
             part.file.resume();
           }
-        } else {
-          fields[part.fieldname] = part.value;
+        } else if (part.fieldname === 'chunk_index' && (chunkIndex === undefined || chunkIndex === null)) {
+          chunkIndex = part.value;
         }
       }
 
-      if (!chunkStream) {
+      if (!result) {
         return reply.status(400).send({ error: 'Chunk file is required' });
       }
-
-      const result = await movieUpload.writeUploadChunk({
-        uploadId: request.params.uploadId,
-        categoryId: request.params.id,
-        chunkIndex: fields.chunk_index,
-        fileStream: chunkStream,
-      });
 
       return result;
     } catch (err) {
       return reply.status(400).send({ error: err.message });
+    }
+  });
+
+  // حالة جلسة الرفع — تتيح للعميل استئناف الرفع من القطعة الصحيحة بعد أي انقطاع
+  fastify.get('/:id/movies/upload/session/:uploadId/status', {
+    preHandler: [requireMinRole('operator')],
+    config: uploadRouteConfig,
+  }, async (request, reply) => {
+    try {
+      return movieUpload.getUploadStatus({
+        uploadId: request.params.uploadId,
+        categoryId: request.params.id,
+      });
+    } catch (err) {
+      return reply.status(404).send({ error: err.message });
     }
   });
 
