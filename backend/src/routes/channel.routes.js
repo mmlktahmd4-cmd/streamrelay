@@ -153,6 +153,16 @@ export default async function channelRoutes(fastify) {
           .map((ch) => channelService.sanitizeChannelForRole({ ...ch, content_type: ch.content_type || 'live' }, 'viewer')),
         ...movieItems,
       ];
+    } else {
+      // المشرف/المشغّل: ندمج الأفلام المرفوعة لتظهر مع القنوات في لوحة الإدارة
+      let movies = await categoryService.listAllMovies();
+      if (category_id) movies = movies.filter((m) => m.category_id === category_id);
+      if (search) {
+        const q = String(search).toLowerCase();
+        movies = movies.filter((m) =>
+          (m.name || '').toLowerCase().includes(q) || (m.slug || '').toLowerCase().includes(q));
+      }
+      result.channels = [...result.channels, ...movies];
     }
 
     return result;

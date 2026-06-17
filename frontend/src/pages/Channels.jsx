@@ -15,6 +15,7 @@ import {
   runBulkFix,
   fixChannel,
   getCategoriesFull,
+  deleteMovie,
 } from '../api/client';
 import ChannelDiagnosticsModal from '../components/admin/ChannelDiagnosticsModal';
 import { useAuth } from '../context/AuthContext';
@@ -71,9 +72,12 @@ export default function Channels() {
     });
   };
 
+  // الأفلام (vod) لا تدخل في إجراءات البث الجماعية — نحدد القنوات المباشرة فقط
+  const liveChannels = channels.filter((ch) => ch.content_type !== 'vod');
+
   const toggleSelectAll = () => {
-    if (selected.size === channels.length) setSelected(new Set());
-    else setSelected(new Set(channels.map((ch) => ch.id)));
+    if (selected.size === liveChannels.length && liveChannels.length > 0) setSelected(new Set());
+    else setSelected(new Set(liveChannels.map((ch) => ch.id)));
   };
 
   const applyBulkStream = async (action, all = false) => {
@@ -215,6 +219,19 @@ export default function Channels() {
     }
   };
 
+  const handleDeleteMovie = async (id) => {
+    if (!confirm('هل أنت متأكد من حذف هذا الفيلم؟ سيُحذف الملف نهائياً.')) return;
+    setActionLoading(id);
+    try {
+      await deleteMovie(id);
+      await fetchChannels();
+    } catch (err) {
+      alert(err.response?.data?.error || 'فشل حذف الفيلم');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const handleAction = async (id, action) => {
     setActionLoading(id);
     try {
@@ -277,7 +294,7 @@ export default function Channels() {
           <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
             <CheckSquare className="w-4 h-4" />
             <button type="button" className="underline" onClick={toggleSelectAll}>
-              {selected.size === channels.length ? 'إلغاء التحديد' : 'تحديد الكل'}
+              {selected.size === liveChannels.length && liveChannels.length > 0 ? 'إلغاء التحديد' : 'تحديد الكل'}
             </button>
             <span className="text-slate-400">({selected.size} محدد)</span>
           </div>
@@ -391,11 +408,17 @@ export default function Channels() {
               </tr>
             </thead>
             <tbody>
-              {channels.map((ch) => (
-                <tr key={ch.id} className={actionLoading === ch.id ? 'opacity-60' : ''}>
+              {channels.map((ch) => {
+                const isMovie = ch.content_type === 'vod';
+                return (
+                <tr key={`${isMovie ? 'movie' : 'ch'}-${ch.id}`} className={actionLoading === ch.id ? 'opacity-60' : ''}>
                   {isOperator && (
                     <td>
-                      <input type="checkbox" checked={selected.has(ch.id)} onChange={() => toggleSelect(ch.id)} className="rounded border-slate-300" />
+                      {isMovie ? (
+                        <span className="block w-4" />
+                      ) : (
+                        <input type="checkbox" checked={selected.has(ch.id)} onChange={() => toggleSelect(ch.id)} className="rounded border-slate-300" />
+                      )}
                     </td>
                   )}
                   <td>
@@ -417,7 +440,11 @@ export default function Channels() {
                     </div>
                   </td>
                   <td className="hidden md:table-cell">
-                    <span className="admin-tag text-[10px] py-0">{ch.source_type?.toUpperCase()}</span>
+                    {isMovie ? (
+                      <span className="admin-tag admin-tag-purple text-[10px] py-0">فيلم</span>
+                    ) : (
+                      <span className="admin-tag text-[10px] py-0">{ch.source_type?.toUpperCase()}</span>
+                    )}
                     {ch.is_public && <span className="admin-tag admin-tag-blue text-[10px] py-0 mr-1">عامة</span>}
                   </td>
                   <td className="hidden lg:table-cell text-xs text-slate-600">
@@ -429,17 +456,23 @@ export default function Channels() {
                   </td>
                   <td>
                     <div className="flex flex-col gap-1 items-start max-w-[200px]">
-                      <StatusBadge status={ch.status} />
-                      {ch.on_demand && (
-                        <span className="text-[10px] font-semibold text-cyan-700 bg-cyan-50 px-1.5 py-0.5 rounded">On Demand</span>
-                      )}
-                      {ch.last_error && (ch.status === 'error' || ch.status === 'starting') && (
-                        <span className="text-[10px] text-red-600 line-clamp-2" title={ch.last_error}>{ch.last_error}</span>
+                      {isMovie ? (
+                        <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">جاهز للعرض</span>
+                      ) : (
+                        <>
+                          <StatusBadge status={ch.status} />
+                          {ch.on_demand && (
+                            <span className="text-[10px] font-semibold text-cyan-700 bg-cyan-50 px-1.5 py-0.5 rounded">On Demand</span>
+                          )}
+                          {ch.last_error && (ch.status === 'error' || ch.status === 'starting') && (
+                            <span className="text-[10px] text-red-600 line-clamp-2" title={ch.last_error}>{ch.last_error}</span>
+                          )}
+                        </>
                       )}
                     </div>
                   </td>
                   <td className="hidden lg:table-cell">
-                    {isOperator && ch.status === 'running' ? (
+                    {!isMovie && isOperator && ch.status === 'running' ? (
                       <RelayUrlCopy channelId={ch.id} status={ch.status} />
                     ) : (
                       <span className="text-xs text-slate-400">—</span>
@@ -450,7 +483,17 @@ export default function Channels() {
                       <Link to={`/player/${ch.id}`} className="btn-icon !p-1.5" title="معاينة">
                         <Eye className="w-3.5 h-3.5" />
                       </Link>
-                      {isOperator && (
+                      {isOperator && isMovie && (
+                        <>
+                          <Link to="/categories" className="btn-icon !p-1.5" title="تعديل الفيلم (الأقسام)">
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Link>
+                          <button className="btn-icon btn-icon-danger !p-1.5" onClick={() => handleDeleteMovie(ch.id)} disabled={actionLoading === ch.id} title="حذف الفيلم">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      )}
+                      {isOperator && !isMovie && (
                         <>
                           {ch.status !== 'running' ? (
                             <button className="btn-icon btn-icon-success !p-1.5" onClick={() => handleAction(ch.id, 'start')} disabled={actionLoading === ch.id} title="تشغيل">
@@ -486,7 +529,8 @@ export default function Channels() {
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

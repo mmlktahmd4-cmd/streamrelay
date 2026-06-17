@@ -356,3 +356,25 @@ export async function listPublicMovies() {
     return [];
   }
 }
+
+/** كل الأفلام المرفوعة (للوحة الإدارة) — تظهر مع القنوات حتى لو كانت غير عامة */
+export async function listAllMovies() {
+  try {
+    const result = await query(
+      `SELECT m.id, m.name, m.slug, 'vod' AS content_type, 'running' AS status,
+              m.is_public, m.category_id, m.file_size, m.mime_type, m.description,
+              m.poster_url, m.sort_order, m.created_at, cat.name AS category_name
+       FROM movies m
+       LEFT JOIN categories cat ON cat.id = m.category_id
+       WHERE m.is_active = true
+       ORDER BY m.sort_order, m.name`
+    );
+    return result.rows.map((row) => ({
+      ...row,
+      source_type: 'vod',
+      logo_url: row.poster_url || null,
+    }));
+  } catch {
+    return [];
+  }
+}
