@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useOutletContext } from 'react-router-dom';
-import { getChannels, getCategoriesFull } from '../../api/client';
+import { getChannels, getCategoriesFull, proxiedImageUrl } from '../../api/client';
 import { useViewerBranding } from '../../context/ViewerBrandingContext';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import { Play, Radio, Search, Tv2, Film } from 'lucide-react';
@@ -166,7 +166,7 @@ function SectionBlock({ title, items, layout }) {
 
 function MediaCard({ channel, variant = 'grid', live = false, movie = false }) {
   const canWatch = movie || channel.on_demand || channel.status === 'running';
-  const imageUrl = channel.logo_url || channel.poster_url;
+  const imageUrl = proxiedImageUrl(channel.logo_url || channel.poster_url);
 
   // ── نمط القائمة (صف أفقي مدمج) ──
   if (variant === 'list') {

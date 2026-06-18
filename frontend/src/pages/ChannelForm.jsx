@@ -8,6 +8,7 @@ import {
   uploadMovie,
   updateMovie,
   getServers,
+  proxiedImageUrl,
 } from '../api/client';
 import { ArrowRight, Film, Radio } from 'lucide-react';
 
@@ -181,7 +182,7 @@ export default function ChannelForm() {
           <label className="label">رابط الصورة (اختياري)</label>
           <input className="input" name="logo_url" value={form.logo_url} onChange={handleChange} dir="ltr" placeholder="https://example.com/logo.png" />
           {form.logo_url && (
-            <img src={form.logo_url} alt="" className="mt-2 h-16 w-16 rounded-lg object-cover border border-slate-200" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+            <img src={proxiedImageUrl(form.logo_url)} alt="" className="mt-2 h-16 w-16 rounded-lg object-cover border border-slate-200" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
           )}
         </div>
 

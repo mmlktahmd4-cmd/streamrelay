@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getChannel, getPlaybackUrl, getChannels } from '../../api/client';
+import { getChannel, getPlaybackUrl, getChannels, proxiedImageUrl } from '../../api/client';
 import { useViewerBranding } from '../../context/ViewerBrandingContext';
 import HlsPlayer from '../../components/HlsPlayer';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
@@ -130,7 +130,7 @@ export default function ViewerWatch() {
   const isOnDemand = !!channel.on_demand;
   const canPlay = isVod || isOnDemand || channel.status === 'running';
   const isStarting = isOnDemand && streamStarting && !error;
-  const image = channel.logo_url || channel.poster_url;
+  const image = proxiedImageUrl(channel.logo_url || channel.poster_url);
 
   return (
     <div className="vw-shell">
@@ -241,7 +241,7 @@ export default function ViewerWatch() {
 function RelatedCard({ channel }) {
   const isVod = channel.content_type === 'vod';
   const canWatch = isVod || channel.on_demand || channel.status === 'running';
-  const image = channel.logo_url || channel.poster_url;
+  const image = proxiedImageUrl(channel.logo_url || channel.poster_url);
 
   const inner = (
     <div className={`viewer-channel-card ${canWatch ? 'cursor-pointer' : 'opacity-60'}`}>

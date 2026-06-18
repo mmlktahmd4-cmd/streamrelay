@@ -26,6 +26,7 @@ import mikrotikRoutes from './routes/mikrotik.routes.js';
 import categoryRoutes from './routes/category.routes.js';
 import serverRoutes from './routes/server.routes.js';
 import internalRoutes from './routes/internal.routes.js';
+import imageRoutes from './routes/image.routes.js';
 
 const log = createChildLogger('server');
 
@@ -123,6 +124,7 @@ async function buildApp() {
   await app.register(categoryRoutes, { prefix: '/api/categories' });
   await app.register(serverRoutes, { prefix: '/api/servers' });
   await app.register(internalRoutes, { prefix: '/api/internal' });
+  await app.register(imageRoutes, { prefix: '/api' });
 
   app.addHook('onResponse', async (request, reply) => {
     if (reply.statusCode < 200 || reply.statusCode >= 400) return;

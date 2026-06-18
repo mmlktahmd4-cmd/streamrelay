@@ -3,6 +3,25 @@ import { clearAuthStorage, getLoginPath, isAdminLoginPage, isViewerLoginPage } f
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
+/**
+ * يُمرّر الصور الخارجية (شعارات/ملصقات) عبر وكيل اللوحة لتفادي حظر hotlink
+ * والمحتوى المختلط. الروابط المحلية وبيانات data: تبقى كما هي.
+ */
+export function proxiedImageUrl(url) {
+  if (!url || typeof url !== 'string') return url;
+  const u = url.trim();
+  if (!u || u.startsWith('data:') || u.startsWith('blob:')) return u;
+  if (u.startsWith('/')) return u; // رابط محلي على نفس اللوحة
+  if (/^https?:\/\//i.test(u)) {
+    try {
+      const parsed = new URL(u);
+      if (typeof window !== 'undefined' && parsed.origin === window.location.origin) return u;
+    } catch { /* ignore */ }
+    return `${API_BASE}/img?u=${encodeURIComponent(u)}`;
+  }
+  return u;
+}
+
 const api = axios.create({
   baseURL: API_BASE,
   timeout: 30000,

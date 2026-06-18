@@ -4,6 +4,7 @@ import {
   previewM3UFromUrl,
   importM3USelected,
   getCategories,
+  proxiedImageUrl,
 } from '../../api/client';
 import {
   Upload,
@@ -374,7 +375,7 @@ export default function ChannelImportPanel({ onDone }) {
                         <div className="w-10 h-10 rounded-lg bg-slate-100 border border-slate-200 overflow-hidden shrink-0 flex items-center justify-center">
                           {ch.logo_url ? (
                             <img
-                              src={ch.logo_url}
+                              src={proxiedImageUrl(ch.logo_url)}
                               alt=""
                               className="w-full h-full object-contain"
                               loading="lazy"

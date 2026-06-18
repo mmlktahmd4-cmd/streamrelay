@@ -16,6 +16,7 @@ import {
   fixChannel,
   getCategoriesFull,
   deleteMovie,
+  proxiedImageUrl,
 } from '../api/client';
 import ChannelDiagnosticsModal from '../components/admin/ChannelDiagnosticsModal';
 import { useAuth } from '../context/AuthContext';
@@ -424,7 +425,7 @@ export default function Channels() {
                   <td>
                     <div className="flex items-center gap-3">
                       {ch.logo_url ? (
-                        <img src={ch.logo_url} alt="" className="w-10 h-10 rounded-lg object-cover border border-slate-200 shrink-0" />
+                        <img src={proxiedImageUrl(ch.logo_url)} alt="" className="w-10 h-10 rounded-lg object-cover border border-slate-200 shrink-0" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
                       ) : (
                         <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
                           <Radio className="w-4 h-4 text-slate-400" />
