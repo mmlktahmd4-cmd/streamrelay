@@ -44,11 +44,13 @@ export default function Layout() {
   const roleLabels = { admin: 'مدير النظام', operator: 'مشغّل', viewer: 'مشاهد' };
 
   return (
-    <div className="admin-theme min-h-screen flex">
+    <div className="admin-theme h-[100dvh] overflow-hidden flex">
       <aside
-        className={`admin-sidebar fixed inset-y-0 right-0 z-50 w-64 text-white flex flex-col
-          transform transition-transform duration-300 lg:translate-x-0 lg:sticky lg:top-0 lg:self-start lg:h-[100dvh] lg:overflow-hidden ${
-          sidebarOpen ? 'translate-x-0' : 'translate-x-full'
+        className={`admin-sidebar flex flex-col w-64 shrink-0 h-full text-white overflow-hidden
+          fixed inset-y-0 right-0 z-50
+          transform transition-transform duration-300
+          lg:relative lg:translate-x-0 lg:z-auto ${
+          sidebarOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'
         }`}
       >
         <div className="flex items-center gap-3 px-5 py-5 border-b border-white/10 shrink-0">
@@ -110,15 +112,15 @@ export default function Layout() {
         <div className="fixed inset-0 bg-black/40 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
-      <div className="flex-1 flex flex-col min-w-0 min-h-screen lg:h-[100dvh] lg:overflow-hidden">
-        <header className="lg:hidden flex items-center gap-3 px-4 py-3 bg-white border-b border-[#dde3ea] shadow-sm">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
+        <header className="lg:hidden shrink-0 flex items-center gap-3 px-4 py-3 bg-white border-b border-[#dde3ea] shadow-sm">
           <button onClick={() => setSidebarOpen(true)} className="p-2 rounded-lg hover:bg-slate-100 text-slate-600">
             <Menu className="w-5 h-5" />
           </button>
           <span className="font-bold text-slate-800">StreamRelay</span>
         </header>
 
-        <main className="flex-1 p-5 lg:p-8 overflow-auto">
+        <main className="flex-1 min-h-0 overflow-y-auto p-5 lg:p-8">
           <Outlet />
         </main>
       </div>
