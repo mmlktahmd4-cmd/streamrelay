@@ -11,7 +11,7 @@ export const DEFAULT_BRANDING = {
   viewer_layout: 'grid',
 };
 
-export const VIEWER_LAYOUTS = ['grid', 'posters', 'list', 'rows'];
+export const VIEWER_LAYOUTS = ['grid', 'posters', 'list', 'rows', 'folders'];
 
 function normalizeLayout(value) {
   const v = String(value ?? '').trim();

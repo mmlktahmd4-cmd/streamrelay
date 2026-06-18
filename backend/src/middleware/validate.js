@@ -93,7 +93,7 @@ export const brandingSettingsSchema = z.object({
   app_tagline: z.string().max(120).default('بث داخلي آمن'),
   live_watch_notice: z.string().max(200).default('أنت تشاهد عبر البث الداخلي على شبكة السيرفر'),
   vod_watch_notice: z.string().max(200).default('تشغيل فيلم من السيرفر المحلي'),
-  viewer_layout: z.enum(['grid', 'posters', 'list', 'rows']).default('grid'),
+  viewer_layout: z.enum(['grid', 'posters', 'list', 'rows', 'folders']).default('grid'),
 });
 
 export const createServerSchema = z.object({

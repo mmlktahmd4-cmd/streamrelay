@@ -3,7 +3,7 @@ import { Link, useOutletContext } from 'react-router-dom';
 import { getChannels, getCategoriesFull, proxiedImageUrl } from '../../api/client';
 import { useViewerBranding } from '../../context/ViewerBrandingContext';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
-import { Play, Radio, Search, Tv2, Film } from 'lucide-react';
+import { Play, Radio, Search, Tv2, Film, Folder, FolderOpen, ChevronDown } from 'lucide-react';
 
 // أنماط العرض المتاحة في بوابة المشاهدة (تُختار من لوحة الإدارة)
 const LAYOUTS = {
@@ -11,6 +11,8 @@ const LAYOUTS = {
   posters: { card: 'poster', container: 'grid', gridCols: 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-5' },
   list: { card: 'list', container: 'list' },
   rows: { card: 'poster', container: 'rows' },
+  // نمط المجلدات: كل قسم مجلد يُفتح لعرض قنواته بداخله
+  folders: { card: 'grid', container: 'grid', gridCols: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3', folders: true },
 };
 
 export default function ViewerHome() {
@@ -77,6 +79,8 @@ export default function ViewerHome() {
           <Tv2 className="w-14 h-14 text-slate-600 mx-auto mb-4" />
           <p className="text-slate-400 font-medium">لا يوجد محتوى في هذا القسم</p>
         </div>
+      ) : layout.folders && activeCategory === 'all' ? (
+        <FolderView sections={sections} uncategorized={uncategorized} layout={layout} />
       ) : (
         <div className="space-y-10">
           {activeCategory === 'all' ? (
@@ -127,19 +131,14 @@ function Group({ icon, title, items, layout, live = false, movie = false }) {
   );
 }
 
-function SectionBlock({ title, items, layout }) {
+function SectionGroups({ items, layout }) {
   const movies = items.filter((ch) => ch.content_type === 'vod');
   const live = items.filter((ch) => ch.content_type !== 'vod');
   const liveRunning = live.filter((ch) => ch.on_demand || ch.status === 'running');
   const liveOther = live.filter((ch) => !ch.on_demand && ch.status !== 'running');
 
   return (
-    <section>
-      <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-        {title}
-        <span className="text-xs text-slate-500 font-normal">({items.length})</span>
-      </h2>
-
+    <>
       <Group
         icon={<Film className="w-4 h-4" />}
         title="أفلام"
@@ -160,7 +159,62 @@ function SectionBlock({ title, items, layout }) {
         items={liveOther}
         layout={layout}
       />
+    </>
+  );
+}
+
+function SectionBlock({ title, items, layout }) {
+  return (
+    <section>
+      <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+        {title}
+        <span className="text-xs text-slate-500 font-normal">({items.length})</span>
+      </h2>
+      <SectionGroups items={items} layout={layout} />
     </section>
+  );
+}
+
+// نمط المجلدات: كل قسم مجلد يُفتح بالنقر لعرض قنواته
+function FolderView({ sections, uncategorized, layout }) {
+  const folders = [...sections];
+  if (uncategorized.length > 0) {
+    folders.push({ id: '__other__', name: 'أخرى', items: uncategorized });
+  }
+  const [openId, setOpenId] = useState(null);
+
+  const toggle = (id) => setOpenId((prev) => (prev === id ? null : id));
+
+  if (folders.length === 0) return null;
+
+  return (
+    <div className="space-y-3">
+      {folders.map((folder) => {
+        const isOpen = openId === folder.id;
+        const liveCount = folder.items.filter((ch) => ch.content_type !== 'vod').length;
+        const movieCount = folder.items.length - liveCount;
+        return (
+          <div key={folder.id} className={`viewer-folder ${isOpen ? 'open' : ''}`}>
+            <button type="button" className="viewer-folder-head" onClick={() => toggle(folder.id)}>
+              <span className="viewer-folder-icon">
+                {isOpen ? <FolderOpen className="w-5 h-5" /> : <Folder className="w-5 h-5" />}
+              </span>
+              <span className="viewer-folder-name">{folder.name}</span>
+              <span className="viewer-folder-meta">
+                {movieCount > 0 && <span className="viewer-folder-tag movie">{movieCount} فيلم</span>}
+                {liveCount > 0 && <span className="viewer-folder-tag">{liveCount} قناة</span>}
+              </span>
+              <ChevronDown className={`viewer-folder-chevron w-5 h-5 ${isOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {isOpen && (
+              <div className="viewer-folder-body">
+                <SectionGroups items={folder.items} layout={layout} />
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

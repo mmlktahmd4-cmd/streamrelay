@@ -6,7 +6,7 @@ import {
   saveStreamingSettings,
 } from '../api/client';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
-import { Settings as SettingsIcon, RotateCcw, LayoutGrid, Image, List, Rows3, Check, Gauge } from 'lucide-react';
+import { Settings as SettingsIcon, RotateCcw, LayoutGrid, Image, List, Rows3, Check, Gauge, FolderTree } from 'lucide-react';
 
 const DEFAULTS = {
   app_title: 'StreamRelay TV',
@@ -21,6 +21,7 @@ const LAYOUT_OPTIONS = [
   { id: 'posters', label: 'بوسترات سينمائية', desc: 'بطاقات عمودية 2:3 بكثافة أعلى — مثالي للأفلام', icon: Image },
   { id: 'list', label: 'قائمة مدمجة', desc: 'صفوف أفقية مع شعار واسم وزر تشغيل — مناسب لقوائم IPTV الطويلة', icon: List },
   { id: 'rows', label: 'صفوف أفقية', desc: 'كل قسم صف قابل للتمرير الأفقي — نمط Netflix/Shahid', icon: Rows3 },
+  { id: 'folders', label: 'مجلدات الأقسام', desc: 'كل قسم مجلد مغلق — يفتحه العميل لعرض قنواته بداخله', icon: FolderTree },
 ];
 
 export default function Settings() {
