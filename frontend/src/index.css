@@ -719,6 +719,7 @@
 
   .viewer-sidebar {
     background: rgba(0, 0, 0, 0.15);
+    /* القائمة الجانبية ثابتة — التمرير داخل منطقة القنوات فقط */
   }
 
   .viewer-sidebar-link {

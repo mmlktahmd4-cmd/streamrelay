@@ -24,8 +24,8 @@ export default function ViewerLayout() {
   };
 
   return (
-    <div className="viewer-theme min-h-screen flex flex-col">
-      <header className="viewer-header">
+    <div className="viewer-theme min-h-screen flex flex-col md:h-[100dvh] md:overflow-hidden">
+      <header className="viewer-header shrink-0">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
           <Link to="/watch" className="flex items-center gap-3">
             <div className="viewer-logo">
@@ -54,10 +54,10 @@ export default function ViewerLayout() {
         </div>
       </header>
 
-      <div className="flex-1 flex max-w-7xl mx-auto w-full">
-        <aside className="viewer-sidebar hidden md:block w-56 shrink-0 border-l border-slate-800/80 p-4">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3 px-2">الأقسام</p>
-          <nav className="space-y-1">
+      <div className="flex-1 flex max-w-7xl mx-auto w-full min-h-0 md:overflow-hidden">
+        <aside className="viewer-sidebar hidden md:flex md:flex-col w-56 shrink-0 border-l border-slate-800/80 p-4 min-h-0">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3 px-2 shrink-0">الأقسام</p>
+          <nav className="space-y-1 flex-1 min-h-0 overflow-y-auto">
             <button
               type="button"
               onClick={() => setActiveCategory('all')}
@@ -80,8 +80,8 @@ export default function ViewerLayout() {
           </nav>
         </aside>
 
-        <main className="flex-1 min-w-0">
-          <div className="md:hidden px-4 pt-4 overflow-x-auto">
+        <main className="flex-1 min-w-0 min-h-0 md:overflow-y-auto">
+          <div className="md:hidden px-4 pt-4 overflow-x-auto shrink-0">
             <div className="flex gap-2 pb-2">
               <button type="button" onClick={() => setActiveCategory('all')} className={`viewer-chip ${activeCategory === 'all' ? 'active' : ''}`}>الكل</button>
               {categories.map((cat) => (
@@ -93,7 +93,7 @@ export default function ViewerLayout() {
         </main>
       </div>
 
-      <footer className="viewer-footer">
+      <footer className="viewer-footer shrink-0">
         البث عبر الشبكة الداخلية — حسابك: <strong>{user?.username}</strong>
       </footer>
 

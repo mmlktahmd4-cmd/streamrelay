@@ -46,12 +46,12 @@ export default function Layout() {
   return (
     <div className="admin-theme min-h-screen flex">
       <aside
-        className={`admin-sidebar fixed inset-y-0 right-0 z-50 w-64 text-white
-          transform transition-transform duration-300 lg:translate-x-0 lg:static ${
+        className={`admin-sidebar fixed inset-y-0 right-0 z-50 w-64 text-white flex flex-col
+          transform transition-transform duration-300 lg:translate-x-0 lg:sticky lg:top-0 lg:self-start lg:h-[100dvh] lg:overflow-hidden ${
           sidebarOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
-        <div className="flex items-center gap-3 px-5 py-5 border-b border-white/10">
+        <div className="flex items-center gap-3 px-5 py-5 border-b border-white/10 shrink-0">
           <div className="w-10 h-10 rounded-lg bg-[#1a6bb5] flex items-center justify-center shadow-md">
             <Radio className="w-5 h-5 text-white" />
           </div>
@@ -64,7 +64,7 @@ export default function Layout() {
           </button>
         </div>
 
-        <nav className="py-4 flex-1">
+        <nav className="py-4 flex-1 min-h-0 overflow-y-auto">
           <p className="px-5 mb-2 text-[10px] font-bold uppercase tracking-wider text-blue-200/50">القائمة الرئيسية</p>
           {filteredNav.map(({ to, icon: Icon, label, end }) => (
             <NavLink
@@ -86,7 +86,7 @@ export default function Layout() {
           </Link>
         </nav>
 
-        <div className="p-4 border-t border-white/10">
+        <div className="p-4 border-t border-white/10 shrink-0">
           <div className="flex items-center gap-3 px-2">
             <div className="w-9 h-9 rounded-full bg-[#1a6bb5] flex items-center justify-center text-sm font-bold shrink-0">
               {user?.username?.[0]?.toUpperCase()}
@@ -110,7 +110,7 @@ export default function Layout() {
         <div className="fixed inset-0 bg-black/40 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
-      <div className="flex-1 flex flex-col min-w-0 min-h-screen">
+      <div className="flex-1 flex flex-col min-w-0 min-h-screen lg:h-[100dvh] lg:overflow-hidden">
         <header className="lg:hidden flex items-center gap-3 px-4 py-3 bg-white border-b border-[#dde3ea] shadow-sm">
           <button onClick={() => setSidebarOpen(true)} className="p-2 rounded-lg hover:bg-slate-100 text-slate-600">
             <Menu className="w-5 h-5" />
