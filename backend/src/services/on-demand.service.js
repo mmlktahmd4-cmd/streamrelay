@@ -19,8 +19,9 @@ const STUCK_START_MS = 240000;
 const STUCK_STARTING_KICK_MS = 75000;
 
 function idleTimeoutMs() {
+  // مهلة توقّف القناة عند الطلب بعد إغلاق المشاهد لها — الحد الأدنى دقيقتان
   const sec = config.streaming.onDemandIdleTimeoutSec;
-  return Math.max(300, Math.min(900, sec)) * 1000;
+  return Math.max(120, Math.min(900, sec)) * 1000;
 }
 
 function idleCheckMs() {
