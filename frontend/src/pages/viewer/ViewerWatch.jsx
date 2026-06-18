@@ -57,7 +57,7 @@ export default function ViewerWatch() {
           }
         }
 
-        // قائمة التشغيل: عناصر نفس القسم القابلة للمشاهدة (للتنقّل والتشغيل التلقائي)
+        // قائمة التشغيل: التنقّل والتشغيل التلقائي للأفلام/الفيديوهات فقط (VOD) وليس للبث المباشر
         try {
           const { data } = await getChannels({ limit: 200 });
           const all = (data.channels || []).filter((c) => c.is_public !== false);
@@ -65,11 +65,15 @@ export default function ViewerWatch() {
           const watchable = sameCat.filter(
             (c) => c.content_type === 'vod' || c.on_demand || c.status === 'running'
           );
-          // نضمن وجود العنصر الحالي ضمن القائمة لحساب التالي/السابق
-          const pl = watchable.some((c) => c.id === ch.id)
-            ? watchable
-            : [{ ...ch }, ...watchable];
-          setPlaylist(pl);
+
+          // قائمة القلب التلقائي مقتصرة على الفيديوهات فقط (ولا تشمل البث المباشر)
+          if (isVod) {
+            const vodList = sameCat.filter((c) => c.content_type === 'vod');
+            const pl = vodList.some((c) => c.id === ch.id) ? vodList : [{ ...ch }, ...vodList];
+            setPlaylist(pl);
+          } else {
+            setPlaylist([]);
+          }
           setRelated(watchable.filter((c) => c.id !== ch.id).slice(0, 15));
         } catch { /* ignore */ }
       } catch {
