@@ -612,7 +612,7 @@ export default function Channels() {
                               </Link>
                               {isOperator && isMovie && (
                                 <>
-                                  <Link to="/categories" className="btn-icon !p-1.5" title="تعديل الفيلم (الأقسام)">
+                                  <Link to={`/channels/${ch.id}/edit`} className="btn-icon !p-1.5" title="تعديل الفيلم">
                                     <Pencil className="w-3.5 h-3.5" />
                                   </Link>
                                   <button className="btn-icon btn-icon-danger !p-1.5" onClick={() => handleDeleteMovie(ch.id)} disabled={actionLoading === ch.id} title="حذف الفيلم">
