@@ -1,19 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { getChannel, getPlaybackUrl, getChannels, proxiedImageUrl } from '../../api/client';
 import { useViewerBranding } from '../../context/ViewerBrandingContext';
 import HlsPlayer from '../../components/HlsPlayer';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
-import { ArrowRight, Tv2, Film, Play, ShieldCheck, Share2, Maximize, RotateCw, Layers } from 'lucide-react';
+import { ArrowRight, Tv2, Film, Play, ShieldCheck, Share2, Maximize, RotateCw, Layers, ChevronRight, ChevronLeft, SkipForward, SkipBack } from 'lucide-react';
 
 export default function ViewerWatch() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const branding = useViewerBranding();
   const [channel, setChannel] = useState(null);
   const [playbackUrl, setPlaybackUrl] = useState('');
   const [playbackType, setPlaybackType] = useState('live');
   const [streamStarting, setStreamStarting] = useState(false);
   const [related, setRelated] = useState([]);
+  const [playlist, setPlaylist] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
@@ -55,15 +57,20 @@ export default function ViewerWatch() {
           }
         }
 
-        // قنوات ذات صلة (نفس القسم، عامة، الأنشط أولاً)
+        // قائمة التشغيل: عناصر نفس القسم القابلة للمشاهدة (للتنقّل والتشغيل التلقائي)
         try {
           const { data } = await getChannels({ limit: 200 });
-          const list = (data.channels || [])
-            .filter((c) => c.is_public !== false && c.id !== ch.id)
-            .filter((c) => (ch.category_id ? c.category_id === ch.category_id : true))
-            .sort((a, b) => (a.status === 'running' ? -1 : 1) - (b.status === 'running' ? -1 : 1))
-            .slice(0, 15);
-          setRelated(list);
+          const all = (data.channels || []).filter((c) => c.is_public !== false);
+          const sameCat = all.filter((c) => (ch.category_id ? c.category_id === ch.category_id : true));
+          const watchable = sameCat.filter(
+            (c) => c.content_type === 'vod' || c.on_demand || c.status === 'running'
+          );
+          // نضمن وجود العنصر الحالي ضمن القائمة لحساب التالي/السابق
+          const pl = watchable.some((c) => c.id === ch.id)
+            ? watchable
+            : [{ ...ch }, ...watchable];
+          setPlaylist(pl);
+          setRelated(watchable.filter((c) => c.id !== ch.id).slice(0, 15));
         } catch { /* ignore */ }
       } catch {
         setError('تعذّر تحميل المحتوى');
@@ -114,6 +121,17 @@ export default function ViewerWatch() {
     showToast('جاري إعادة الاتصال بالبث...');
   };
 
+  // التنقّل بين العناصر (التالي/السابق) ضمن نفس القسم
+  const playlistIndex = channel ? playlist.findIndex((c) => c.id === channel.id) : -1;
+  const nextItem = playlistIndex >= 0 && playlistIndex < playlist.length - 1
+    ? playlist[playlistIndex + 1]
+    : null;
+  const prevItem = playlistIndex > 0 ? playlist[playlistIndex - 1] : null;
+
+  const goTo = (item) => {
+    if (item) navigate(`/watch/live/${item.id}`);
+  };
+
   if (loading) return <LoadingSpinner className="py-32" />;
 
   if (error || !channel) {
@@ -143,7 +161,13 @@ export default function ViewerWatch() {
         <div className="vw-player" ref={playerRef}>
           {canPlay && playbackUrl ? (
             isVod ? (
-              <video src={playbackUrl} controls autoPlay style={{ maxHeight: '74vh' }}>
+              <video
+                src={playbackUrl}
+                controls
+                autoPlay
+                onEnded={() => goTo(nextItem)}
+                style={{ maxHeight: '84vh' }}
+              >
                 <track kind="captions" />
               </video>
             ) : (
@@ -171,6 +195,28 @@ export default function ViewerWatch() {
             </div>
           )}
         </div>
+
+        {/* أسهم التنقّل بين الفيديوهات (القلب للتالي/السابق) */}
+        {prevItem && (
+          <button
+            type="button"
+            className="vw-nav-arrow prev"
+            onClick={() => goTo(prevItem)}
+            title={`السابق: ${prevItem.name}`}
+          >
+            <ChevronRight className="w-6 h-6" />
+          </button>
+        )}
+        {nextItem && (
+          <button
+            type="button"
+            className="vw-nav-arrow next"
+            onClick={() => goTo(nextItem)}
+            title={`التالي: ${nextItem.name}`}
+          >
+            <ChevronLeft className="w-6 h-6" />
+          </button>
+        )}
       </div>
 
       {/* بطاقة معلومات القناة */}
@@ -201,6 +247,16 @@ export default function ViewerWatch() {
           {channel.description && <p className="vw-desc">{channel.description}</p>}
 
           <div className="vw-actions">
+            {prevItem && (
+              <button type="button" className="vw-action" onClick={() => goTo(prevItem)} title={prevItem.name}>
+                <SkipBack className="w-4 h-4" /> السابق
+              </button>
+            )}
+            {nextItem && (
+              <button type="button" className="vw-action vw-action--accent" onClick={() => goTo(nextItem)} title={nextItem.name}>
+                <SkipForward className="w-4 h-4" /> التالي
+              </button>
+            )}
             <button type="button" className="vw-action" onClick={handleShare}>
               <Share2 className="w-4 h-4" /> مشاركة
             </button>
