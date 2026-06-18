@@ -470,6 +470,53 @@
     padding: 0.15rem 0.5rem;
   }
 
+  .admin-theme .admin-channel-section {
+    margin-bottom: 1.75rem;
+  }
+
+  .admin-theme .admin-channel-section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.85rem 1.15rem;
+    background: linear-gradient(135deg, #f8fafc 0%, #eef2f7 100%);
+    border: 1px solid #dde3ea;
+    border-bottom: none;
+    border-radius: 10px 10px 0 0;
+  }
+
+  .admin-theme .admin-channel-section-head.movie {
+    background: linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%);
+    border-color: #e9d5ff;
+  }
+
+  .admin-theme .admin-channel-section-count {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #64748b;
+    background: #fff;
+    border: 1px solid #dde3ea;
+    padding: 0.2rem 0.65rem;
+    border-radius: 999px;
+    shrink: 0;
+  }
+
+  .admin-theme .admin-running-timer {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #059669;
+    background: #ecfdf5;
+    border: 1px solid #a7f3d0;
+    padding: 0.15rem 0.45rem;
+    border-radius: 6px;
+  }
+
+  .admin-theme .admin-table-wrap.section-table {
+    border-radius: 0 0 10px 10px;
+  }
+
   .admin-theme .admin-sidebar {
     background: linear-gradient(180deg, #1a3352 0%, #152a45 100%);
     border-left: 1px solid rgba(255, 255, 255, 0.06);

@@ -15,6 +15,8 @@ const activity = new Map();
 const kickCooldown = new Map();
 const KICK_COOLDOWN_MS = 12000;
 const STUCK_START_MS = 240000;
+/** إذا بقيت القناة في «starting» أطول من هذا — نلغي المهمة ونعيد الإقلاع */
+const STUCK_STARTING_KICK_MS = 75000;
 
 function idleTimeoutMs() {
   const sec = config.streaming.onDemandIdleTimeoutSec;
@@ -163,7 +165,7 @@ export function scheduleOnDemandIdleStop(channelId) {
 }
 
 export async function kickOnDemandStream(channelId) {
-  const channel = await channelService.getChannelById(channelId);
+  let channel = await channelService.getChannelById(channelId);
   if (!channel) throw new Error('القناة غير موجودة');
   if (!channel.on_demand) {
     if (channel.status !== 'running') throw new Error('القناة غير نشطة');
@@ -176,7 +178,19 @@ export async function kickOnDemandStream(channelId) {
   if (channel.status === 'running') return channel;
 
   if (['starting', 'restarting'].includes(channel.status)) {
-    return channel;
+    const age = Date.now() - new Date(channel.updated_at).getTime();
+    if (age < STUCK_STARTING_KICK_MS) {
+      return channel;
+    }
+    // عالقة في الإقلاع — نُفرّغ المهام القديمة ونعيد المحاولة
+    const { cancelChannelJobs } = await import('./queue.service.js');
+    await cancelChannelJobs(channelId);
+    await channelService.updateChannelStatus(channelId, 'stopped', {
+      pid: null,
+      last_error: 'إعادة محاولة الإقلاع',
+    });
+    channel = await channelService.getChannelById(channelId);
+    log.warn({ channelId, ageMs: age }, 'On-demand stuck in starting — reset and retry');
   }
 
   const lastKick = kickCooldown.get(channelId);
@@ -188,6 +202,19 @@ export async function kickOnDemandStream(channelId) {
   await channelService.updateChannelStatus(channelId, 'starting');
 
   const { enqueueStreamJob } = await import('./queue.service.js');
+  // إزالة مهمة إقلاع فاشلة/عالقة بنفس المعرّف قبل إنشاء واحدة جديدة
+  try {
+    const { getQueue } = await import('./queue.service.js');
+    const queue = getQueue();
+    const oldJob = await queue.getJob(`on-demand-start-${channelId}`);
+    if (oldJob) {
+      const state = await oldJob.getState();
+      if (['completed', 'failed', 'delayed', 'waiting'].includes(state)) {
+        await oldJob.remove().catch(() => {});
+      }
+    }
+  } catch { /* ignore */ }
+
   await enqueueStreamJob(
     'start-channel',
     channelId,

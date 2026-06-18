@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   getChannels,
@@ -24,7 +24,35 @@ import StatusBadge from '../components/StatusBadge';
 import RelayUrlCopy from '../components/ui/RelayUrlCopy';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import ChannelImportPanel from '../components/admin/ChannelImportPanel';
-import { Plus, Play, Square, RotateCcw, Trash2, Eye, Search, Download, Pencil, Radio, Copy, CheckSquare, Stethoscope } from 'lucide-react';
+import { Plus, Play, Square, RotateCcw, Trash2, Eye, Search, Download, Pencil, Radio, Copy, CheckSquare, Stethoscope, Clock, FolderOpen, Film, PauseCircle } from 'lucide-react';
+
+function formatUptime(totalSec) {
+  const sec = Math.max(0, totalSec);
+  if (sec < 60) return `${sec}ث`;
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  if (m < 60) return s > 0 ? `${m}د ${s}ث` : `${m}د`;
+  const h = Math.floor(m / 60);
+  const rm = m % 60;
+  return rm > 0 ? `${h}س ${rm}د` : `${h}س`;
+}
+
+function RunningTimer({ startedAt, status }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (status !== 'running' || !startedAt) return undefined;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [status, startedAt]);
+  if (status !== 'running' || !startedAt) return null;
+  const sec = Math.floor((now - new Date(startedAt).getTime()) / 1000);
+  return (
+    <span className="admin-running-timer inline-flex items-center gap-1" title="مدة التشغيل الحالية">
+      <Clock className="w-3 h-3" />
+      {formatUptime(sec)}
+    </span>
+  );
+}
 
 export default function Channels() {
   const { isOperator } = useAuth();
@@ -36,6 +64,7 @@ export default function Channels() {
   const [selected, setSelected] = useState(new Set());
   const [bulkCategory, setBulkCategory] = useState('');
   const [bulkPublic, setBulkPublic] = useState('');
+  const [bulkActive, setBulkActive] = useState('');
   const [bulkLoading, setBulkLoading] = useState(false);
   const [diagOpen, setDiagOpen] = useState(false);
   const [diagLoading, setDiagLoading] = useState(false);
@@ -73,12 +102,70 @@ export default function Channels() {
     });
   };
 
-  // الأفلام (vod) لا تدخل في إجراءات البث الجماعية — نحدد القنوات المباشرة فقط
+  // الأفلام (vod) لا تدخل في إجراءات البث الجماعية
   const liveChannels = channels.filter((ch) => ch.content_type !== 'vod');
+  const movieChannels = channels.filter((ch) => ch.content_type === 'vod');
+
+  const groupedSections = useMemo(() => {
+    const sections = [];
+    const liveByCat = new Map();
+    for (const ch of liveChannels) {
+      const key = ch.category_id || '__none__';
+      if (!liveByCat.has(key)) {
+        liveByCat.set(key, {
+          id: key,
+          name: ch.category_name || 'بدون قسم',
+          kind: 'live',
+          items: [],
+        });
+      }
+      liveByCat.get(key).items.push(ch);
+    }
+
+    const sortedCats = [...categories].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+    for (const cat of sortedCats) {
+      const block = liveByCat.get(cat.id);
+      if (block?.items.length) {
+        sections.push({ ...block, name: cat.name });
+        liveByCat.delete(cat.id);
+      }
+    }
+    if (liveByCat.has('__none__')) sections.push(liveByCat.get('__none__'));
+    for (const [, block] of liveByCat) {
+      if (block.items.length) sections.push(block);
+    }
+
+    const moviesByCat = new Map();
+    for (const m of movieChannels) {
+      const key = m.category_id || '__none__';
+      if (!moviesByCat.has(key)) {
+        moviesByCat.set(key, {
+          id: `movie-${key}`,
+          name: m.category_name ? `أفلام — ${m.category_name}` : 'أفلام — بدون قسم',
+          kind: 'movie',
+          items: [],
+        });
+      }
+      moviesByCat.get(key).items.push(m);
+    }
+    for (const cat of sortedCats) {
+      const block = moviesByCat.get(cat.id);
+      if (block?.items.length) {
+        sections.push({ ...block, name: `أفلام — ${cat.name}` });
+        moviesByCat.delete(cat.id);
+      }
+    }
+    if (moviesByCat.has('__none__')) sections.push(moviesByCat.get('__none__'));
+    for (const [, block] of moviesByCat) {
+      if (block.items.length) sections.push(block);
+    }
+
+    return sections;
+  }, [liveChannels, movieChannels, categories]);
 
   const toggleSelectAll = () => {
-    if (selected.size === liveChannels.length && liveChannels.length > 0) setSelected(new Set());
-    else setSelected(new Set(liveChannels.map((ch) => ch.id)));
+    if (selected.size === channels.length && channels.length > 0) setSelected(new Set());
+    else setSelected(new Set(channels.map((ch) => ch.id)));
   };
 
   const applyBulkStream = async (action, all = false) => {
@@ -87,14 +174,21 @@ export default function Channels() {
       alert('حدد قنوات أولاً أو استخدم "على الكل"');
       return;
     }
-    const scope = all ? 'كل القنوات' : `${selected.size} قناة`;
+    const liveIds = all
+      ? null
+      : [...selected].filter((id) => liveChannels.some((ch) => ch.id === id));
+    if (!all && liveIds.length === 0) {
+      alert('حدد قنوات مباشرة (On Demand لا تُشغّل من تحديد الأفلام فقط)');
+      return;
+    }
+    const scope = all ? 'كل القنوات' : `${liveIds.length} قناة`;
     if (!confirm(`${labels[action]} ${scope}؟`)) return;
 
     setBulkLoading(true);
     try {
       const payload = all
         ? { all: true, action }
-        : { ids: [...selected], action };
+        : { ids: liveIds, action };
       const { data } = await bulkStreamAction(payload);
       alert(`تم جدولة ${labels[action]} لـ ${data.queued} قناة`);
       setSelected(new Set());
@@ -112,6 +206,8 @@ export default function Channels() {
     else if (bulkCategory) updates.category_id = bulkCategory;
     if (bulkPublic === 'true') updates.is_public = true;
     if (bulkPublic === 'false') updates.is_public = false;
+    if (bulkActive === 'true') updates.is_active = true;
+    if (bulkActive === 'false') updates.is_active = false;
 
     if (Object.keys(updates).length === 0) {
       alert('اختر تصنيف أو حالة الظهور للتحديث');
@@ -124,9 +220,14 @@ export default function Channels() {
 
     setBulkLoading(true);
     try {
+      const liveIds = all ? null : [...selected].filter((id) => liveChannels.some((ch) => ch.id === id));
+      if (!all && liveIds.length === 0) {
+        alert('حدد قنوات مباشرة للتحديث');
+        return;
+      }
       const payload = all
         ? { all: true, updates }
-        : { ids: [...selected], updates };
+        : { ids: liveIds, updates };
       const { data } = await bulkUpdateChannels(payload);
       alert(`تم تحديث ${data.updated} قناة`);
       setSelected(new Set());
@@ -151,9 +252,12 @@ export default function Channels() {
       const payload = all ? { all: true } : { ids: [...selected] };
       const { data } = await bulkDeleteChannels(payload);
       if (data.failed?.length) {
-        alert(`تم حذف ${data.deleted} من ${data.total}. فشل حذف: ${data.failed.map((f) => f.name || f.id).join('، ')}`);
+        alert(`تم حذف ${data.deleted} من ${data.total} (${data.channels_deleted || 0} قناة، ${data.movies_deleted || 0} فيلم).\nفشل: ${data.failed.map((f) => f.name || f.id).join('، ')}`);
       } else {
-        alert(`تم حذف ${data.deleted} قناة`);
+        const parts = [];
+        if (data.channels_deleted) parts.push(`${data.channels_deleted} قناة`);
+        if (data.movies_deleted) parts.push(`${data.movies_deleted} فيلم`);
+        alert(`تم حذف ${parts.join(' و ') || data.deleted}`);
       }
       setSelected(new Set());
       await fetchChannels();
@@ -295,7 +399,7 @@ export default function Channels() {
           <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
             <CheckSquare className="w-4 h-4" />
             <button type="button" className="underline" onClick={toggleSelectAll}>
-              {selected.size === liveChannels.length && liveChannels.length > 0 ? 'إلغاء التحديد' : 'تحديد الكل'}
+              {selected.size === channels.length && channels.length > 0 ? 'إلغاء التحديد' : 'تحديد الكل'}
             </button>
             <span className="text-slate-400">({selected.size} محدد)</span>
           </div>
@@ -339,7 +443,7 @@ export default function Channels() {
           </div>
 
           <div className="flex flex-col lg:flex-row lg:items-end gap-3 pt-2 border-t border-slate-100">
-            <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-3">
               <select className="input py-2 text-sm" value={bulkCategory} onChange={(e) => setBulkCategory(e.target.value)}>
                 <option value="">— تغيير القسم —</option>
                 <option value="__none__">بدون قسم</option>
@@ -349,6 +453,11 @@ export default function Channels() {
                 <option value="">— الظهور —</option>
                 <option value="true">عامة للمشاهدين</option>
                 <option value="false">خاصة</option>
+              </select>
+              <select className="input py-2 text-sm" value={bulkActive} onChange={(e) => setBulkActive(e.target.value)}>
+                <option value="">— الحالة —</option>
+                <option value="false">تعليق (إخفاء)</option>
+                <option value="true">إلغاء التعليق</option>
               </select>
             </div>
             <div className="flex gap-2">
@@ -395,145 +504,165 @@ export default function Channels() {
           )}
         </div>
       ) : (
-        <div className="admin-table-wrap">
-          <table className="admin-table admin-channel-table">
-            <thead>
-              <tr>
-                {isOperator && <th className="w-8" />}
-                <th>القناة</th>
-                <th className="hidden md:table-cell">النوع</th>
-                <th className="hidden lg:table-cell">السيرفر</th>
-                <th>الحالة</th>
-                <th className="hidden lg:table-cell">رابط البث</th>
-                <th className="text-left w-[1%]">إجراءات</th>
-              </tr>
-            </thead>
-            <tbody>
-              {channels.map((ch) => {
-                const isMovie = ch.content_type === 'vod';
-                return (
-                <tr key={`${isMovie ? 'movie' : 'ch'}-${ch.id}`} className={actionLoading === ch.id ? 'opacity-60' : ''}>
-                  {isOperator && (
-                    <td>
-                      {isMovie ? (
-                        <span className="block w-4" />
-                      ) : (
-                        <input type="checkbox" checked={selected.has(ch.id)} onChange={() => toggleSelect(ch.id)} className="rounded border-slate-300" />
-                      )}
-                    </td>
+        <div className="space-y-6">
+          {groupedSections.map((section) => (
+            <section key={section.id} className="admin-channel-section">
+              <div className={`admin-channel-section-head ${section.kind === 'movie' ? 'movie' : ''}`}>
+                <div className="flex items-center gap-2 min-w-0">
+                  {section.kind === 'movie' ? (
+                    <Film className="w-4 h-4 text-violet-600 shrink-0" />
+                  ) : (
+                    <FolderOpen className="w-4 h-4 text-[#1a6bb5] shrink-0" />
                   )}
-                  <td>
-                    <div className="flex items-center gap-3">
-                      {ch.logo_url ? (
-                        <img src={proxiedImageUrl(ch.logo_url)} alt="" className="w-10 h-10 rounded-lg object-cover border border-slate-200 shrink-0" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-                      ) : (
-                        <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-                          <Radio className="w-4 h-4 text-slate-400" />
-                        </div>
-                      )}
-                      <div>
-                        <p className="channel-name">{ch.name}</p>
-                        <p className="channel-slug">{ch.slug}</p>
-                        {ch.category_name && (
-                          <span className="admin-tag mt-1 inline-block text-[10px] py-0">{ch.category_name}</span>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="hidden md:table-cell">
-                    {isMovie ? (
-                      <span className="admin-tag admin-tag-purple text-[10px] py-0">فيلم</span>
-                    ) : (
-                      <span className="admin-tag text-[10px] py-0">{ch.source_type?.toUpperCase()}</span>
-                    )}
-                    {ch.is_public && <span className="admin-tag admin-tag-blue text-[10px] py-0 mr-1">عامة</span>}
-                  </td>
-                  <td className="hidden lg:table-cell text-xs text-slate-600">
-                    {ch.server_name ? (
-                      <span title={ch.server_hostname}>{ch.server_name}</span>
-                    ) : (
-                      <span className="text-slate-400">تلقائي</span>
-                    )}
-                  </td>
-                  <td>
-                    <div className="flex flex-col gap-1 items-start max-w-[200px]">
-                      {isMovie ? (
-                        <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">جاهز للعرض</span>
-                      ) : (
-                        <>
-                          <StatusBadge status={ch.status} />
-                          {ch.on_demand && (
-                            <span className="text-[10px] font-semibold text-cyan-700 bg-cyan-50 px-1.5 py-0.5 rounded">On Demand</span>
+                  <h2 className="font-bold text-slate-800 truncate">{section.name}</h2>
+                </div>
+                <span className="admin-channel-section-count">{section.items.length} عنصر</span>
+              </div>
+              <div className="admin-table-wrap section-table">
+                <table className="admin-table admin-channel-table">
+                  <thead>
+                    <tr>
+                      {isOperator && <th className="w-8" />}
+                      <th>القناة</th>
+                      <th className="hidden md:table-cell">النوع</th>
+                      <th className="hidden lg:table-cell">السيرفر</th>
+                      <th>الحالة</th>
+                      <th className="hidden lg:table-cell">رابط البث</th>
+                      <th className="text-left w-[1%]">إجراءات</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {section.items.map((ch) => {
+                      const isMovie = ch.content_type === 'vod';
+                      return (
+                        <tr key={`${isMovie ? 'movie' : 'ch'}-${ch.id}`} className={actionLoading === ch.id ? 'opacity-60' : ''}>
+                          {isOperator && (
+                            <td>
+                              <input type="checkbox" checked={selected.has(ch.id)} onChange={() => toggleSelect(ch.id)} className="rounded border-slate-300" />
+                            </td>
                           )}
-                          {ch.last_error && (ch.status === 'error' || ch.status === 'starting') && (
-                            <span className="text-[10px] text-red-600 line-clamp-2" title={ch.last_error}>{ch.last_error}</span>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </td>
-                  <td className="hidden lg:table-cell">
-                    {!isMovie && isOperator && ch.status === 'running' ? (
-                      <RelayUrlCopy channelId={ch.id} status={ch.status} />
-                    ) : (
-                      <span className="text-xs text-slate-400">—</span>
-                    )}
-                  </td>
-                  <td>
-                    <div className="admin-channel-actions">
-                      <Link to={`/player/${ch.id}`} className="btn-icon !p-1.5" title="معاينة">
-                        <Eye className="w-3.5 h-3.5" />
-                      </Link>
-                      {isOperator && isMovie && (
-                        <>
-                          <Link to="/categories" className="btn-icon !p-1.5" title="تعديل الفيلم (الأقسام)">
-                            <Pencil className="w-3.5 h-3.5" />
-                          </Link>
-                          <button className="btn-icon btn-icon-danger !p-1.5" onClick={() => handleDeleteMovie(ch.id)} disabled={actionLoading === ch.id} title="حذف الفيلم">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </>
-                      )}
-                      {isOperator && !isMovie && (
-                        <>
-                          {ch.status !== 'running' ? (
-                            <button className="btn-icon btn-icon-success !p-1.5" onClick={() => handleAction(ch.id, 'start')} disabled={actionLoading === ch.id} title="تشغيل">
-                              <Play className="w-3.5 h-3.5" />
-                            </button>
-                          ) : (
-                            <button className="btn-icon btn-icon-warning !p-1.5" onClick={() => handleAction(ch.id, 'stop')} disabled={actionLoading === ch.id} title="إيقاف">
-                              <Square className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                          {ch.status === 'running' && (
-                            <span className="lg:hidden">
-                              <RelayUrlCopy channelId={ch.id} status={ch.status} compact />
-                            </span>
-                          )}
-                          <button className="btn-icon !p-1.5" onClick={() => handleAction(ch.id, 'restart')} disabled={actionLoading === ch.id} title="إعادة تشغيل">
-                            <RotateCcw className="w-3.5 h-3.5" />
-                          </button>
-                          <button className="btn-icon !p-1.5" onClick={() => handleAction(ch.id, 'diagnose')} disabled={actionLoading === ch.id} title="فحص">
-                            <Stethoscope className="w-3.5 h-3.5" />
-                          </button>
-                          <Link to={`/channels/${ch.id}/edit`} className="btn-icon !p-1.5" title="تعديل">
-                            <Pencil className="w-3.5 h-3.5" />
-                          </Link>
-                          <button className="btn-icon !p-1.5" onClick={() => handleAction(ch.id, 'duplicate')} disabled={actionLoading === ch.id} title="نسخ">
-                            <Copy className="w-3.5 h-3.5" />
-                          </button>
-                          <button className="btn-icon btn-icon-danger !p-1.5" onClick={() => handleAction(ch.id, 'delete')} disabled={actionLoading === ch.id} title="حذف">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                          <td>
+                            <div className="flex items-center gap-3">
+                              {ch.logo_url ? (
+                                <img src={proxiedImageUrl(ch.logo_url)} alt="" className="w-10 h-10 rounded-lg object-cover border border-slate-200 shrink-0" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                              ) : (
+                                <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+                                  {isMovie ? <Film className="w-4 h-4 text-violet-400" /> : <Radio className="w-4 h-4 text-slate-400" />}
+                                </div>
+                              )}
+                              <div>
+                                <p className="channel-name">{ch.name}</p>
+                                <p className="channel-slug">{ch.slug}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="hidden md:table-cell">
+                            {isMovie ? (
+                              <span className="admin-tag admin-tag-purple text-[10px] py-0">فيلم</span>
+                            ) : (
+                              <span className="admin-tag text-[10px] py-0">{ch.source_type?.toUpperCase()}</span>
+                            )}
+                            {ch.is_public && <span className="admin-tag admin-tag-blue text-[10px] py-0 mr-1">عامة</span>}
+                            {ch.on_demand && !isMovie && (
+                              <span className="admin-tag text-[10px] py-0 mr-1 bg-cyan-50 text-cyan-700 border-cyan-200">OD</span>
+                            )}
+                          </td>
+                          <td className="hidden lg:table-cell text-xs text-slate-600">
+                            {isMovie ? (
+                              <span className="text-slate-400">—</span>
+                            ) : ch.server_name ? (
+                              <span title={ch.server_hostname}>{ch.server_name}</span>
+                            ) : (
+                              <span className="text-slate-400">تلقائي</span>
+                            )}
+                          </td>
+                          <td>
+                            <div className="flex flex-col gap-1 items-start max-w-[200px]">
+                              {isMovie ? (
+                                <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">جاهز للعرض</span>
+                              ) : (
+                                <>
+                                  <div className="flex flex-wrap items-center gap-1">
+                                    <StatusBadge status={ch.status} />
+                                    <RunningTimer startedAt={ch.last_started} status={ch.status} />
+                                  </div>
+                                  {ch.on_demand && (
+                                    <span className="text-[10px] font-semibold text-cyan-700 bg-cyan-50 px-1.5 py-0.5 rounded inline-flex items-center gap-1">
+                                      <PauseCircle className="w-3 h-3" /> On Demand
+                                    </span>
+                                  )}
+                                  {ch.last_error && (ch.status === 'error' || ch.status === 'starting') && (
+                                    <span className="text-[10px] text-red-600 line-clamp-2" title={ch.last_error}>{ch.last_error}</span>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          </td>
+                          <td className="hidden lg:table-cell">
+                            {!isMovie && isOperator && ch.status === 'running' ? (
+                              <RelayUrlCopy channelId={ch.id} status={ch.status} />
+                            ) : (
+                              <span className="text-xs text-slate-400">—</span>
+                            )}
+                          </td>
+                          <td>
+                            <div className="admin-channel-actions">
+                              <Link to={`/player/${ch.id}`} className="btn-icon !p-1.5" title="معاينة">
+                                <Eye className="w-3.5 h-3.5" />
+                              </Link>
+                              {isOperator && isMovie && (
+                                <>
+                                  <Link to="/categories" className="btn-icon !p-1.5" title="تعديل الفيلم (الأقسام)">
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </Link>
+                                  <button className="btn-icon btn-icon-danger !p-1.5" onClick={() => handleDeleteMovie(ch.id)} disabled={actionLoading === ch.id} title="حذف الفيلم">
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </>
+                              )}
+                              {isOperator && !isMovie && (
+                                <>
+                                  {ch.status !== 'running' ? (
+                                    <button className="btn-icon btn-icon-success !p-1.5" onClick={() => handleAction(ch.id, 'start')} disabled={actionLoading === ch.id} title={ch.on_demand ? 'تشغيل On Demand' : 'تشغيل'}>
+                                      <Play className="w-3.5 h-3.5" />
+                                    </button>
+                                  ) : (
+                                    <button className="btn-icon btn-icon-warning !p-1.5" onClick={() => handleAction(ch.id, 'stop')} disabled={actionLoading === ch.id} title="إيقاف">
+                                      <Square className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                  {ch.status === 'running' && (
+                                    <span className="lg:hidden">
+                                      <RelayUrlCopy channelId={ch.id} status={ch.status} compact />
+                                    </span>
+                                  )}
+                                  <button className="btn-icon !p-1.5" onClick={() => handleAction(ch.id, 'restart')} disabled={actionLoading === ch.id} title="إعادة تشغيل">
+                                    <RotateCcw className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button className="btn-icon !p-1.5" onClick={() => handleAction(ch.id, 'diagnose')} disabled={actionLoading === ch.id} title="فحص">
+                                    <Stethoscope className="w-3.5 h-3.5" />
+                                  </button>
+                                  <Link to={`/channels/${ch.id}/edit`} className="btn-icon !p-1.5" title="تعديل">
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </Link>
+                                  <button className="btn-icon !p-1.5" onClick={() => handleAction(ch.id, 'duplicate')} disabled={actionLoading === ch.id} title="نسخ">
+                                    <Copy className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button className="btn-icon btn-icon-danger !p-1.5" onClick={() => handleAction(ch.id, 'delete')} disabled={actionLoading === ch.id} title="حذف">
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          ))}
         </div>
       )}
 

@@ -369,6 +369,13 @@ export default async function channelRoutes(fastify) {
     preHandler: [requireMinRole('operator')],
   }, async (request, reply) => {
     try {
+      const channel = await channelService.getChannelById(request.params.id);
+      if (!channel) return reply.status(404).send({ error: 'Channel not found' });
+      if (channel.on_demand) {
+        await runStreamJob('stop-channel', request.params.id, { options: { manual: true } }, 90000);
+        const { ensureOnDemandStream } = await import('../services/on-demand.service.js');
+        return await ensureOnDemandStream(request.params.id);
+      }
       return await runStreamJob('restart-channel', request.params.id);
     } catch (err) {
       return reply.status(500).send({ error: err.message });

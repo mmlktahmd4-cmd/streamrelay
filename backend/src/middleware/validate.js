@@ -246,6 +246,7 @@ export const bulkUpdateChannelsSchema = z.object({
     is_public: z.boolean().optional(),
     auto_restart: z.boolean().optional(),
     on_demand: z.boolean().optional(),
+    is_active: z.boolean().optional(),
   }),
 }).refine((data) => data.all || (data.ids && data.ids.length > 0), {
   message: 'Provide ids or set all=true',

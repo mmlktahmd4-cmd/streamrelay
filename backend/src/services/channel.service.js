@@ -250,7 +250,7 @@ export async function bulkUpdateChannels({ ids, all, updates }) {
     throw new Error('No updates provided');
   }
 
-  const allowed = ['category_id', 'is_public', 'auto_restart', 'on_demand'];
+  const allowed = ['category_id', 'is_public', 'auto_restart', 'on_demand', 'is_active'];
   const sets = [];
   const values = [];
   let idx = 1;
@@ -311,9 +311,32 @@ export async function bulkStreamAction({ action, ids, all }) {
       : 'restart-channel';
 
   const { buildStreamJobPayload } = await import('./server.service.js');
+  const { kickOnDemandStream } = await import('./on-demand.service.js');
   let queued = 0;
   for (let i = 0; i < channelRows.length; i += 1) {
     const channel = channelRows[i];
+    const full = await getChannelById(channel.id);
+    if (!full) continue;
+
+    // On Demand: تشغيل/إعادة تشغيل عبر kickOnDemand وليس قائمة الانتظار العادية
+    if (full.on_demand && action === 'start') {
+      await kickOnDemandStream(channel.id);
+      queued += 1;
+      continue;
+    }
+    if (full.on_demand && action === 'restart') {
+      const stopPayload = await buildStreamJobPayload(channel.id, 'stop');
+      await queue.add('stop-channel', { ...stopPayload, options: { manual: true } }, {
+        delay: i * config.streaming.bulkStartStaggerMs,
+        jobId: `restart-stop-${channel.id}-${Date.now()}`,
+        removeOnComplete: true,
+        removeOnFail: 50,
+      });
+      await kickOnDemandStream(channel.id);
+      queued += 1;
+      continue;
+    }
+
     const actionType = action === 'stop' ? 'stop' : action === 'restart' ? 'restart' : 'start';
     const payload = await buildStreamJobPayload(channel.id, actionType);
     const data = action === 'stop'
@@ -364,26 +387,36 @@ export async function deleteChannel(id) {
 }
 
 export async function bulkDeleteChannels({ ids, all }) {
-  let channelRows;
+  let channelRows = [];
+  let movieRows = [];
 
   if (all) {
     const result = await query(
       `SELECT id, name FROM channels WHERE is_active = true ORDER BY sort_order, name`
     );
     channelRows = result.rows;
-  } else {
-    const result = await query(
-      `SELECT id, name FROM channels WHERE is_active = true AND id = ANY($1::uuid[])`,
-      [ids]
-    );
-    channelRows = result.rows;
+  } else if (ids?.length) {
+    const [chResult, mvResult] = await Promise.all([
+      query(
+        `SELECT id, name FROM channels WHERE is_active = true AND id = ANY($1::uuid[])`,
+        [ids]
+      ),
+      query(
+        `SELECT id, name FROM movies WHERE is_active = true AND id = ANY($1::uuid[])`,
+        [ids]
+      ),
+    ]);
+    channelRows = chResult.rows;
+    movieRows = mvResult.rows;
   }
 
-  if (channelRows.length === 0) {
-    return { deleted: 0, total: 0, failed: [] };
+  if (channelRows.length === 0 && movieRows.length === 0) {
+    return { deleted: 0, total: 0, failed: [], channels_deleted: 0, movies_deleted: 0 };
   }
 
   let deleted = 0;
+  let channelsDeleted = 0;
+  let moviesDeleted = 0;
   const failed = [];
 
   for (const row of channelRows) {
@@ -391,12 +424,32 @@ export async function bulkDeleteChannels({ ids, all }) {
       await stopChannelForDelete(row.id);
       await deleteChannel(row.id);
       deleted += 1;
+      channelsDeleted += 1;
     } catch (err) {
-      failed.push({ id: row.id, name: row.name, error: err.message });
+      failed.push({ id: row.id, name: row.name, error: err.message, type: 'channel' });
     }
   }
 
-  return { deleted, total: channelRows.length, failed };
+  if (movieRows.length > 0) {
+    const { deleteMovie } = await import('./category.service.js');
+    for (const row of movieRows) {
+      try {
+        await deleteMovie(row.id);
+        deleted += 1;
+        moviesDeleted += 1;
+      } catch (err) {
+        failed.push({ id: row.id, name: row.name, error: err.message, type: 'movie' });
+      }
+    }
+  }
+
+  return {
+    deleted,
+    total: channelRows.length + movieRows.length,
+    failed,
+    channels_deleted: channelsDeleted,
+    movies_deleted: moviesDeleted,
+  };
 }
 
 export async function updateChannelStatus(id, status, extra = {}) {
