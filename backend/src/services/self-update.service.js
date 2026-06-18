@@ -3,6 +3,7 @@ import path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { createChildLogger } from '../utils/logger.js';
+import { getChangelog, getCurrentVersion } from '../data/changelog.js';
 
 const log = createChildLogger('self-update');
 const execFileAsync = promisify(execFile);
@@ -420,6 +421,9 @@ export async function getUpdateStatus({ force = false } = {}) {
     os_apply_available: osApplyAvailable(),
     last,
     remote,
+    // سجلّ الميزات المضمَّن مع الكود — يظهر دائماً (حتى بعد التحديث)
+    app_version: getCurrentVersion(),
+    changelog: getChangelog(10),
   };
 }
 

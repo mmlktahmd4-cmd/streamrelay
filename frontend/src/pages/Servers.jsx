@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getServers, createServer, updateServer, deleteServer, provisionServer, suspendServer, unsuspendServer, syncRemoteServers, updateRemoteServer, rollbackRemoteServer, saveServerSsh, getSelfUpdate, triggerSelfUpdate, triggerSelfRollback } from '../api/client';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
-import { Server, Plus, Pencil, Trash2, RefreshCw, Activity, Link2, Settings2, PauseCircle, PlayCircle, CloudDownload, DownloadCloud, BellRing, ChevronDown, ChevronUp, Undo2 } from 'lucide-react';
+import { Server, Plus, Pencil, Trash2, RefreshCw, Activity, Link2, Settings2, PauseCircle, PlayCircle, CloudDownload, DownloadCloud, BellRing, ChevronDown, ChevronUp, Undo2, Sparkles, CheckCircle2 } from 'lucide-react';
 
 const roleLabels = {
   full: 'كامل (API + بث)',
@@ -260,9 +260,11 @@ export default function ServersPage() {
   const [updateInfo, setUpdateInfo] = useState(null);
   const [updating, setUpdating] = useState(false);
   const [showUpdateDetails, setShowUpdateDetails] = useState(true);
+  const [showChangelog, setShowChangelog] = useState(true);
 
   const remoteUpdate = updateInfo?.remote;
   const hasPendingUpdate = !!remoteUpdate?.update_available && !updating;
+  const changelog = updateInfo?.changelog || [];
 
   const showMessage = (text, tone = 'success') => {
     setMessage(text);
@@ -768,6 +770,55 @@ export default function ServersPage() {
                   </li>
                 ))}
               </ul>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* سجلّ الميزات — يظهر دائماً (حتى بعد التحديث) ليعرف المشرف ما الجديد */}
+      {changelog.length > 0 && (
+        <div className="mb-6 card overflow-hidden border-cyan-200">
+          <button
+            type="button"
+            onClick={() => setShowChangelog((v) => !v)}
+            className="w-full flex items-center justify-between gap-3 px-4 py-3 bg-gradient-to-l from-cyan-50 to-white hover:from-cyan-100/70 transition-colors"
+          >
+            <span className="flex items-center gap-2 font-bold text-slate-800">
+              <Sparkles className="w-4 h-4 text-cyan-600" />
+              الميزات الجديدة
+              {updateInfo?.app_version && (
+                <span className="font-mono text-[11px] text-cyan-700 bg-cyan-100 rounded px-1.5 py-0.5">
+                  {updateInfo.app_version}
+                </span>
+              )}
+            </span>
+            {showChangelog ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
+          </button>
+
+          {showChangelog && (
+            <div className="px-4 py-3 max-h-96 overflow-y-auto divide-y divide-slate-100">
+              {changelog.map((entry, idx) => (
+                <div key={entry.version} className="py-3 first:pt-0 last:pb-0">
+                  <div className="flex flex-wrap items-center gap-2 mb-2">
+                    <span className="font-mono text-[11px] text-slate-500 bg-slate-100 rounded px-1.5 py-0.5">
+                      {entry.version}
+                    </span>
+                    <span className="font-bold text-slate-800 text-sm">{entry.title}</span>
+                    {idx === 0 && (
+                      <span className="text-[10px] font-bold text-white bg-cyan-600 rounded-full px-2 py-0.5">الأحدث</span>
+                    )}
+                    {entry.date && <span className="text-[11px] text-slate-400 mr-auto">{entry.date}</span>}
+                  </div>
+                  <ul className="space-y-1.5">
+                    {(entry.features || []).map((feat, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-slate-700">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                        <span>{feat}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
             </div>
           )}
         </div>
