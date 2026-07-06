@@ -9,6 +9,21 @@ function levelLabel(level) {
   return 'تلقائي';
 }
 
+/** H.264/AVC — الوحيد المدعوم بشكل موثوق في متصفحات سطح المكتب عبر MSE */
+function isBrowserH264Level(level) {
+  const codec = String(level?.videoCodec || level?.attrs?.CODECS || '');
+  if (!codec) return true;
+  return /avc1|avc3|h264/i.test(codec);
+}
+
+function pickBrowserFriendlyLevel(levels) {
+  if (!Array.isArray(levels) || !levels.length) return -1;
+  for (let i = levels.length - 1; i >= 0; i -= 1) {
+    if (isBrowserH264Level(levels[i])) return i;
+  }
+  return levels.length === 1 ? 0 : -1;
+}
+
 export default function HlsPlayer({ src, autoPlay = true, onDemand = false, starting = false }) {
   const rootRef = useRef(null);
   const videoRef = useRef(null);
@@ -137,8 +152,19 @@ export default function HlsPlayer({ src, autoPlay = true, onDemand = false, star
         fatalRetries = 0;
         mediaErrorCount = 0;
         setWaiting(false);
-        setLevels((data?.levels || hls.levels || []).map((l) => ({ height: l.height, bitrate: l.bitrate })));
+        const manifestLevels = data?.levels || hls.levels || [];
+        setLevels(manifestLevels.map((l) => ({ height: l.height, bitrate: l.bitrate })));
         setAutoMode(hls.autoLevelEnabled);
+
+        // تجنّب اختيار جودة HEVC/MPEG-2 في ABR (صوت فقط بدون صورة في Chrome/Firefox)
+        const startIdx = pickBrowserFriendlyLevel(manifestLevels);
+        if (startIdx >= 0 && !isBrowserH264Level(manifestLevels[manifestLevels.length - 1])) {
+          hls.startLevel = startIdx;
+          hls.nextLevel = startIdx;
+          setCurrentLevel(startIdx);
+          setAutoMode(false);
+        }
+
         if (autoPlay) video.play().catch(() => {});
       });
 
@@ -211,8 +237,8 @@ export default function HlsPlayer({ src, autoPlay = true, onDemand = false, star
 
   return (
     <div ref={rootRef} className={isFullscreen ? 'w-full h-full flex flex-col bg-black' : 'w-full'}>
-      <div className={isFullscreen ? 'relative flex-1 min-h-0 bg-black' : 'relative w-full bg-black aspect-video'}>
-        <video ref={videoRef} controls className="w-full h-full object-contain" playsInline />
+      <div className={isFullscreen ? 'relative flex-1 min-h-0 bg-black' : 'relative w-full bg-black aspect-video min-h-[12rem]'}>
+        <video ref={videoRef} controls className="absolute inset-0 w-full h-full object-contain bg-black" playsInline />
 
         {waiting && !error && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/75 text-slate-200 text-sm px-4 text-center">

@@ -184,7 +184,8 @@ const ABR_RUNGS = {
 // 'max_*'   → أعلى جودة بسقف محدّد (مُترمَّزة، بلا تكبير فوق المصدر) + درجات أدنى.
 function buildAbrLadder(mode) {
   switch (mode) {
-    case 'source':   return [{ copy: true }, ABR_RUNGS[480], ABR_RUNGS[240]];
+    // أعلى درجة مُرمَّزة H.264 (لا copy) — copy للمصدر قد يمرّر HEVC/MPEG-2 فلا تظهر الصورة في المتصفح
+    case 'source':   return [ABR_RUNGS[720], ABR_RUNGS[480], ABR_RUNGS[240]];
     case 'max_1080': return [ABR_RUNGS[1080], ABR_RUNGS[480], ABR_RUNGS[240]];
     case 'max_720':  return [ABR_RUNGS[720], ABR_RUNGS[480], ABR_RUNGS[240]];
     case 'max_480':  return [ABR_RUNGS[480], ABR_RUNGS[240]];
@@ -347,7 +348,9 @@ function buildFFmpegArgs(channel, sourceOverride = null, opts = {}) {
 
   } else {
 
-    args.push('-c', 'copy');
+    // ربط صريح للمسارات — يمنع مخرجات HLS صوت-only عند ترتيب غريب لمسارات المصدر
+    args.push('-map', '0:v:0?', '-map', '0:a:0?');
+    args.push('-c:v', 'copy', '-c:a', 'copy');
 
   }
 
