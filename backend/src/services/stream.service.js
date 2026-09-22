@@ -176,20 +176,32 @@ const ABR_RUNGS = {
   720:  { height: 720,  profile: 'high',     vb: '2800k', mr: '3200k', bs: '5000k', ab: '128k' },
   480:  { height: 480,  profile: 'main',     vb: '1200k', mr: '1400k', bs: '2000k', ab: '128k' },
   360:  { height: 360,  profile: 'main',     vb: '800k',  mr: '900k',  bs: '1400k', ab: '96k'  },
-  240:  { height: 240,  profile: 'baseline', vb: '400k',  mr: '500k',  bs: '800k',  ab: '64k'  },
+  240:  { height: 240,  profile: 'baseline', vb: '300k',  mr: '350k',  bs: '600k',  ab: '64k'  },
+  // درجة «الطوارئ» (مثل 144p في يوتيوب): ≈200 kbps إجمالاً — تعمل حتى على إشارة واي-فاي
+  // ضعيفة جداً. تكلفتها على المعالج شبه معدومة، وهي ما يجعل البث يفتح عند الجميع.
+  144:  { height: 144,  profile: 'baseline', vb: '150k',  mr: '180k',  bs: '300k',  ab: '48k'  },
 };
 
+// طول مقطع HLS لدرجات ABR (بالثواني). مقاطع قصيرة = أول صورة بعد كيلوبايتات قليلة
+// (144p × 2ث ≈ 50KB بدل ~3MB سابقاً) وإقلاع أسرع لقنوات On Demand. الكيفريم يُثبَّت
+// على نفس الفترة بـ force_key_frames فتخرج المقاطع بطول 2ث بالضبط مهما كان fps المصدر.
+const ABR_SEGMENT_SEC = 2;
+// عدد المقاطع في القائمة وعتبة الحذف: 60 × 2ث = نافذة دقيقتين (نفس نافذة الاسترجاع
+// السابقة تقريباً) — لا يصطدم المشترك البطيء بمقطع محذوف.
+const ABR_LIST_SIZE = 60;
+
 // يبني سلّم الجودات حسب اختيار المدير لكل قناة. أعلى درجة أولاً.
-// 'source'  → الأصل (نسخة طبق الأصل بلا تكلفة CPU) + 480p + 240p.
+// كل سلّم ينتهي بـ 240p ثم 144p حتى يجد أضعف جهاز درجة يستطيع سحبها.
+// 'source'  → 720p + 480p + 240p + 144p.
 // 'max_*'   → أعلى جودة بسقف محدّد (مُترمَّزة، بلا تكبير فوق المصدر) + درجات أدنى.
 function buildAbrLadder(mode) {
   switch (mode) {
     // أعلى درجة مُرمَّزة H.264 (لا copy) — copy للمصدر قد يمرّر HEVC/MPEG-2 فلا تظهر الصورة في المتصفح
-    case 'source':   return [ABR_RUNGS[720], ABR_RUNGS[480], ABR_RUNGS[240]];
-    case 'max_1080': return [ABR_RUNGS[1080], ABR_RUNGS[480], ABR_RUNGS[240]];
-    case 'max_720':  return [ABR_RUNGS[720], ABR_RUNGS[480], ABR_RUNGS[240]];
-    case 'max_480':  return [ABR_RUNGS[480], ABR_RUNGS[240]];
-    case 'max_360':  return [ABR_RUNGS[360], ABR_RUNGS[240]];
+    case 'source':   return [ABR_RUNGS[720], ABR_RUNGS[480], ABR_RUNGS[240], ABR_RUNGS[144]];
+    case 'max_1080': return [ABR_RUNGS[1080], ABR_RUNGS[480], ABR_RUNGS[240], ABR_RUNGS[144]];
+    case 'max_720':  return [ABR_RUNGS[720], ABR_RUNGS[480], ABR_RUNGS[240], ABR_RUNGS[144]];
+    case 'max_480':  return [ABR_RUNGS[480], ABR_RUNGS[240], ABR_RUNGS[144]];
+    case 'max_360':  return [ABR_RUNGS[360], ABR_RUNGS[240], ABR_RUNGS[144]];
     default:         return null;
   }
 }
@@ -327,8 +339,13 @@ function buildFFmpegArgs(channel, sourceOverride = null, opts = {}) {
         // الفاصلة داخل min() مهرَّبة (\\,) كي لا يفسّرها مُحلّل الفلاتر كفاصل بين فلترين
         `-filter:v:${i}`, `scale=-2:min(${rung.height}\\,ih)`,
         `-b:v:${i}`, rung.vb, `-maxrate:v:${i}`, rung.mr, `-bufsize:v:${i}`, rung.bs,
-        `-g:v:${i}`, '120', `-keyint_min:v:${i}`, '120', `-sc_threshold:v:${i}`, '0',
-        `-c:a:${i}`, 'aac', `-b:a:${i}`, rung.ab, `-ac:${i}`, '2',
+        // كيفريم مثبّت بالزمن كل ABR_SEGMENT_SEC ثانية (مستقل عن fps المصدر) — هذا ما
+        // يضمن مقاطع HLS بطول 2ث بالضبط. سابقاً كان -g 120 (4.8ث عند 25fps) مع hls_time 6
+        // فتخرج المقاطع 9.6ث لأن المقطع لا يُقصّ إلا عند أول كيفريم بعد المهلة.
+        // ‎-g كبير = لا كيفريم إضافي بين النقاط المفروضة، و sc_threshold 0 يمنع كيفريم المشاهد.
+        `-g:v:${i}`, '250', `-sc_threshold:v:${i}`, '0',
+        `-force_key_frames:v:${i}`, `expr:gte(t,n_forced*${ABR_SEGMENT_SEC})`,
+        `-c:a:${i}`, 'aac', `-b:a:${i}`, rung.ab, `-ac:a:${i}`, '2',
       );
     });
 
@@ -362,23 +379,29 @@ function buildFFmpegArgs(channel, sourceOverride = null, opts = {}) {
 
       const hlsDir = path.join(config.streaming.hlsDir, channel.id);
 
-      // مقاطع أطول للبث المُعاد (مثل Xtream الذي يستخدم 10ث) — تقلّل تبديل المقاطع
-      // وتعطي المشغّل هامشاً أكبر فيقلّ التقطيع. نستخدم 6ث كموازنة بين السلاسة والتأخير.
-      const hlsTime = isLiveRelay ? '6' : '4';
+      // بلا ABR (نسخة copy): مقاطع أطول للبث المُعاد (مثل Xtream الذي يستخدم 10ث) —
+      // تقلّل تبديل المقاطع وتعطي المشغّل هامشاً أكبر. لا نستطيع التحكم بالكيفريم في
+      // وضع copy فنُبقي 6ث كما كانت.
+      // مع ABR: مقاطع قصيرة (ABR_SEGMENT_SEC) لأن الكيفريم مفروض كل 2ث — أول صورة تظهر
+      // بعد تنزيل مقطع 144p صغير جداً بدل انتظار مقطع 720p بحجم ميغابايتات (سبب «الدوران»
+      // الطويل عند أصحاب الإشارة الضعيفة بينما يوتيوب يفتح فوراً).
+      const hlsTime = useAbr ? String(ABR_SEGMENT_SEC) : (isLiveRelay ? '6' : '4');
 
       // نُبقي عدداً أكبر من المقاطع في القائمة ونؤخّر حذفها — هذا يمنح المشترك البعيد
       // البطيء نافذة استرجاع أوسع فلا يصطدم بمقطع محذوف (404 = السبب الرئيسي للتقطيع
       // وإعادة التحميل عند البعيدين). التكلفة مساحة قرص فقط، لا حمل CPU.
-      // قائمة 12 مقطعاً + عتبة حذف 12 = الاحتفاظ بنحو 24 مقطعاً (~144ث للبث المباشر).
+      // بلا ABR: قائمة 12 مقطعاً + عتبة حذف 12 = الاحتفاظ بنحو 24 مقطعاً (~144ث).
+      // مع ABR: 60 مقطعاً × 2ث = نفس النافذة الزمنية تقريباً.
+      const listSize = useAbr ? String(ABR_LIST_SIZE) : '12';
       args.push(
 
         '-f', 'hls',
 
         '-hls_time', hlsTime,
 
-        '-hls_list_size', '12',
+        '-hls_list_size', listSize,
 
-        '-hls_delete_threshold', '12',
+        '-hls_delete_threshold', listSize,
 
         '-hls_flags', 'delete_segments+omit_endlist+program_date_time+independent_segments+temp_file',
 

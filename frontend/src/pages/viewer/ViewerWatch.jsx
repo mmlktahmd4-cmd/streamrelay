@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { getChannel, getPlaybackUrl, getChannels, proxiedImageUrl } from '../../api/client';
+import { getChannel, getPlaybackUrl, getChannels, proxiedImageUrl, pulseChannel } from '../../api/client';
 import { useViewerBranding } from '../../context/ViewerBrandingContext';
 import HlsPlayer from '../../components/HlsPlayer';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
@@ -84,6 +84,16 @@ export default function ViewerWatch() {
     load();
     window.scrollTo(0, 0);
   }, [id]);
+
+  // نبضة مشاهدة كل 30ث لقنوات On Demand: nginx يقدّم المقاطع من القرص فلا يرى الـAPI
+  // أي طلب، وبدونها تتوقف القناة بعد دقيقتين رغم استمرار المشاهدة.
+  useEffect(() => {
+    if (!channel?.on_demand || !playbackUrl || playbackType !== 'live') return undefined;
+    const pulse = () => pulseChannel(channel.id).catch(() => {});
+    pulse();
+    const interval = setInterval(pulse, 30000);
+    return () => clearInterval(interval);
+  }, [channel?.id, channel?.on_demand, playbackUrl, playbackType]);
 
   const showToast = (msg) => {
     setToast(msg);

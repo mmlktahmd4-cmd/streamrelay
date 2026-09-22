@@ -239,11 +239,11 @@ export default function ChannelForm() {
               <select className="input" name="abr_mode" value={form.abr_mode} onChange={handleChange}>
                 <option value="default">افتراضي (حسب الإعداد العام للوحة)</option>
                 <option value="off">جودة واحدة فقط (نسخة المصدر — أخفّ على السيرفر)</option>
-                <option value="source">تلقائي حسب المصدر (الأصل + 480p + 240p)</option>
-                <option value="max_1080">حتى 1080p (الأصل لا يُرفع فوقه + 480p + 240p)</option>
-                <option value="max_720">حتى 720p + 480p + 240p</option>
-                <option value="max_480">حتى 480p + 240p</option>
-                <option value="max_360">حتى 360p + 240p</option>
+                <option value="source">تلقائي حسب المصدر (720p + 480p + 240p + 144p)</option>
+                <option value="max_1080">حتى 1080p (الأصل لا يُرفع فوقه + 480p + 240p + 144p)</option>
+                <option value="max_720">حتى 720p + 480p + 240p + 144p</option>
+                <option value="max_480">حتى 480p + 240p + 144p</option>
+                <option value="max_360">حتى 360p + 240p + 144p</option>
               </select>
               <p className="text-xs text-slate-500 mt-1">
                 لإظهار خيار الجودة عند العميل اختر وضعاً غير «افتراضي/جودة واحدة» (مثل «تلقائي حسب المصدر» أو «حتى 480p»).

@@ -52,3 +52,12 @@ backend/src/public/
 
 # Android app APK (يُنزَّل من إصدار GitHub أثناء التثبيت/التحديث)
 public/app/*.apk
+
+# Android app (native) — مخرجات البناء ومفتاح التوقيع لا تُرفع
+android-app/.gradle/
+android-app/build/
+android-app/app/build/
+android-app/local.properties
+android-app/signing/
+android-app/.kotlin/
+android-app/*.apk

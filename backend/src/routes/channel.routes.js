@@ -236,6 +236,23 @@ export default async function channelRoutes(fastify) {
     };
   });
 
+  // نبضة مشاهدة من المشغّل (بوابة الويب + تطبيق الأندرويد) كل ~30 ثانية أثناء التشغيل.
+  // ضرورية لقنوات On Demand: nginx يقدّم المقاطع من القرص مباشرة فلا يصل أي طلب HLS
+  // إلى الـAPI، وبدون هذه النبضة تظن القناة أن آخر مشاهد خرج فتتوقف بعد دقيقتين
+  // رغم أن المشاهدة مستمرة (ثم تعود تعمل عند طلب القائمة = «دوران» متكرر).
+  fastify.post('/:id/pulse', async (request, reply) => {
+    const channel = await channelService.getChannelById(request.params.id);
+    if (!channel) return reply.status(404).send({ error: 'Channel not found' });
+    if (request.user.role === 'viewer' && !channel.is_public) {
+      return reply.status(403).send({ error: 'Channel not available' });
+    }
+    if (channel.on_demand) {
+      const { noteOnDemandSegment } = await import('../services/on-demand.service.js');
+      await noteOnDemandSegment(channel.id);
+    }
+    return { ok: true, on_demand: !!channel.on_demand, status: channel.status };
+  });
+
   fastify.get('/:id/diagnostics', {
     preHandler: [requireMinRole('operator')],
   }, async (request, reply) => {

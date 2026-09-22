@@ -173,6 +173,8 @@ export const startChannel = (id) => api.post(`/channels/${id}/start`, {}, { time
 export const stopChannel = (id) => api.post(`/channels/${id}/stop`, {}, { timeout: 120000 });
 export const restartChannel = (id) => api.post(`/channels/${id}/restart`, {}, { timeout: 240000 });
 export const getPlaybackUrl = (id) => api.get(`/channels/${id}/playback-url`, { timeout: 45000 });
+// نبضة مشاهدة أثناء التشغيل (تُبقي قنوات On Demand شغّالة ما دام هناك مشاهد)
+export const pulseChannel = (id) => api.post(`/channels/${id}/pulse`, {}, { timeout: 15000 });
 
 export const getViewerPlaylistUrl = () => `${API_BASE}/channels/playlist.m3u`;
 

@@ -201,7 +201,7 @@ export default function Settings() {
           البث متعدد الجودات (مثل يوتيوب)
         </h2>
         <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-          عند التفعيل تُبثّ كل قناة بعدة جودات (الأصل + 480p + 240p)، وينزل مشغّل المشترك
+          عند التفعيل تُبثّ كل قناة بعدة جودات (720p + 480p + 240p + 144p) بمقاطع قصيرة 2ث، ويبدأ مشغّل المشترك بأدنى جودة فتظهر الصورة فوراً ثم ينزل/يرتفع
           تلقائياً لجودة أقل عند ضعف النت بدل التقطيع. يقلّل تقطيع المشتركين البعيدين بشكل كبير.
         </p>
         <div className="mt-3 rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800 leading-relaxed">
