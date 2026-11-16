@@ -54,13 +54,12 @@ export async function purgeLocalHlsCache(channelId, slug) {
 
 function sendLocalHlsFile(reply, localPath, file, channel) {
   if (channel?.on_demand) {
+    // noteOnDemandSegment دالة عادية (لا تعيد Promise) — كان `.catch` عليها يُسقط الـAPI كله
+    // مع أول مقطع لقناة On Demand. Promise.resolve().then يلتقط الحالتين وأي استثناء.
     import('./on-demand.service.js').then(({ noteOnDemandActivity, noteOnDemandSegment }) => {
-      if (file.endsWith('.ts') || file.endsWith('.m4s')) {
-        noteOnDemandSegment(channel.id).catch(() => {});
-      } else {
-        noteOnDemandActivity(channel.id).catch(() => {});
-      }
-    });
+      const note = file.endsWith('.ts') || file.endsWith('.m4s') ? noteOnDemandSegment : noteOnDemandActivity;
+      return Promise.resolve().then(() => note(channel.id));
+    }).catch(() => {});
   }
   reply.header('Access-Control-Allow-Origin', '*');
   if (file.endsWith('.m3u8')) {
