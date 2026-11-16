@@ -48,7 +48,7 @@ const optionalUrl = z.preprocess(
 
 export const loginSchema = z.object({
   username: z.string().min(3).max(64),
-  password: z.string().min(6).max(128),
+  password: z.string().min(5).max(128),
 });
 
 const expiresAtField = z.preprocess(
@@ -63,7 +63,7 @@ const expiresAtField = z.preprocess(
 export const createUserSchema = z.object({
   username: z.string().min(3).max(64).regex(/^[a-zA-Z0-9_-]+$/),
   full_name: z.string().max(120).optional().or(z.literal('')),
-  password: z.string().min(6).max(128),
+  password: z.string().min(5).max(128),
   role: z.enum(['admin', 'operator', 'viewer']).default('viewer'),
   // عدد الأجهزة المسموح بها للحساب (يمكن أن يدخل بأكثر من جهاز/مستخدم)
   max_connections: z.number().int().min(1).max(100).default(1),
@@ -76,7 +76,7 @@ export const createUserSchema = z.object({
 
 export const updateUserSchema = z.object({
   full_name: z.string().max(120).optional().or(z.literal('')),
-  password: z.string().min(6).max(128).optional(),
+  password: z.string().min(5).max(128).optional(),
   role: z.enum(['admin', 'operator', 'viewer']).optional(),
   is_active: z.boolean().optional(),
   max_connections: z.number().int().min(1).max(100).optional(),

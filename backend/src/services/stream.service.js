@@ -206,6 +206,37 @@ function buildAbrLadder(mode) {
   }
 }
 
+async function sourceIsFiniteVod(url) {
+  const headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  };
+  const readPlaylist = async (target) => {
+    const response = await fetch(target, {
+      headers,
+      redirect: 'follow',
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!response.ok) return '';
+    return response.text();
+  };
+
+  try {
+    const text = await readPlaylist(url);
+    if (!text.includes('#EXTM3U')) return false;
+    if (text.includes('#EXT-X-ENDLIST')) return true;
+    if (!text.includes('#EXT-X-STREAM-INF')) return false;
+    const variant = text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find((line) => line && !line.startsWith('#'));
+    if (!variant) return false;
+    const variantText = await readPlaylist(new URL(variant, url).href);
+    return variantText.includes('#EXT-X-ENDLIST');
+  } catch {
+    return false;
+  }
+}
+
 function buildFFmpegArgs(channel, sourceOverride = null, opts = {}) {
 
   const sourceUrl = String(sourceOverride || channel.source_url || '').trim();
@@ -296,8 +327,15 @@ function buildFFmpegArgs(channel, sourceOverride = null, opts = {}) {
     '-thread_queue_size', '1024',
     '-analyzeduration', '10000000',
     '-probesize', '10000000',
-    '-i', sourceUrl
   );
+
+  // قائمة منتهية (VOD): بدون -re يُقرأ الملف بأقصى سرعة فينتهي خلال دقيقة تقريباً
+  // ويخرج FFmpeg بالرمز 0، فتُعاد القناة فوراً. -re يبقيه بسرعة العرض، وstream_loop يكرره.
+  if (opts.vod) {
+    args.push('-re', '-stream_loop', '-1');
+  }
+
+  args.push('-i', sourceUrl);
 
   args.push('-fflags', '+genpts+discardcorrupt');
   args.push('-max_muxing_queue_size', '2048');
@@ -305,7 +343,7 @@ function buildFFmpegArgs(channel, sourceOverride = null, opts = {}) {
 
   // live_start_index خيار خاص بـ HLS demuxer فقط. تطبيقه على بث mpegts مباشر
   // (وهو ما تعطيه كثير من روابط Xtream بدون امتداد) يربك الإدخال ويؤخر الإقلاع.
-  if (inputType === 'hls') {
+  if (inputType === 'hls' && !opts.vod) {
     args.push('-live_start_index', '-3');
   }
 
@@ -608,9 +646,11 @@ export async function startStream(channelId, options = {}) {
     abrMode = (await isAbrEnabled()) ? 'source' : 'off';
   }
 
-  const args = buildFFmpegArgs(channel, options.sourceOverride || null, { abrMode });
+  const sourceForProbe = String(options.sourceOverride || channel.source_url || '').trim();
+  const vod = await sourceIsFiniteVod(sourceForProbe);
+  const args = buildFFmpegArgs(channel, options.sourceOverride || null, { abrMode, vod });
 
-  log.info({ channelId, slug: channel.slug, abrMode, args: args.join(' ') }, 'Starting FFmpeg');
+  log.info({ channelId, slug: channel.slug, abrMode, vod, args: args.join(' ') }, 'Starting FFmpeg');
 
 
 

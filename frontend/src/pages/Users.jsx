@@ -225,7 +225,7 @@ export default function Users() {
             </div>
             <div>
               <label className="label">كلمة المرور *</label>
-              <input className="input" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required minLength={6} />
+              <input className="input" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required minLength={5} />
             </div>
             <div>
               <label className="label">الصلاحية</label>
@@ -268,7 +268,7 @@ export default function Users() {
             </div>
             <div>
               <label className="label">كلمة مرور جديدة (اختياري)</label>
-              <input className="input" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} minLength={6} placeholder="اتركه فارغاً للإبقاء" />
+              <input className="input" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} minLength={5} placeholder="اتركه فارغاً للإبقاء" />
             </div>
             <div>
               <label className="label flex items-center gap-1"><UsersIcon className="w-3.5 h-3.5" /> عدد الأجهزة</label>

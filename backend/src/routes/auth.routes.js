@@ -30,11 +30,11 @@ export default async function authRoutes(fastify) {
       );
     }
 
-    if (password.length < 6 || password.length > 128) {
+    if (password.length < 5 || password.length > 128) {
       return loginError(
         reply,
         400,
-        'كلمة المرور يجب أن تكون 6 أحرف على الأقل',
+        'كلمة المرور يجب أن تكون 5 أحرف على الأقل',
         'invalid_password'
       );
     }
