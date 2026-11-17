@@ -1,4 +1,6 @@
-import { spawn } from 'child_process';
+import { spawn, execFile } from 'child_process';
+
+import { promisify } from 'util';
 
 import fs from 'fs/promises';
 
@@ -22,6 +24,43 @@ import {
 
 
 const log = createChildLogger('stream-engine');
+
+const execFileAsync = promisify(execFile);
+
+// ── ترميز عتادي لسلّم ABR (VAAPI على معالج Intel الرسومي) ──
+// قياس على سيرفر i3-5010U: سلّم 4 درجات برمجياً (libx264) ≈ 1.5 نواة لكل قناة، وعلى
+// المعالج الرسومي ≈ 0.5 نواة — أي 3 أضعاف القنوات المتزامنة. يُفحص مرة واحدة: إن لم
+// يوجد /dev/dri أو فشل ترميز تجريبي (لا تعريف/لا صلاحية) نرجع للبرمجي كما كان تماماً.
+// STREAMRELAY_HWACCEL=off يعطّله يدوياً.
+const VAAPI_DEVICE = '/dev/dri/renderD128';
+let hwEncoderProbe = null;
+
+export function detectHwEncoder() {
+  if (hwEncoderProbe) return hwEncoderProbe;
+  hwEncoderProbe = (async () => {
+    const pref = String(process.env.STREAMRELAY_HWACCEL || 'auto').trim().toLowerCase();
+    if (['off', 'none', 'software', '0', 'false'].includes(pref)) return null;
+    try {
+      await fs.access(VAAPI_DEVICE);
+    } catch {
+      return null;
+    }
+    try {
+      await execFileAsync(config.streaming.ffmpegPath || 'ffmpeg', [
+        '-hide_banner', '-loglevel', 'error',
+        '-vaapi_device', VAAPI_DEVICE,
+        '-f', 'lavfi', '-i', 'testsrc=size=320x240:rate=25', '-t', '1',
+        '-vf', 'format=nv12,hwupload', '-c:v', 'h264_vaapi', '-f', 'null', '-',
+      ], { timeout: 20000 });
+      log.info({ device: VAAPI_DEVICE }, 'ABR: VAAPI hardware encoding available');
+      return 'vaapi';
+    } catch (err) {
+      log.warn({ err: String(err?.stderr || err?.message || err).slice(0, 300) }, 'ABR: VAAPI unavailable — using software x264');
+      return null;
+    }
+  })();
+  return hwEncoderProbe;
+}
 
 
 
@@ -200,7 +239,8 @@ function buildAbrLadder(mode) {
     case 'source':   return [ABR_RUNGS[720], ABR_RUNGS[480], ABR_RUNGS[240], ABR_RUNGS[144]];
     case 'max_1080': return [ABR_RUNGS[1080], ABR_RUNGS[480], ABR_RUNGS[240], ABR_RUNGS[144]];
     case 'max_720':  return [ABR_RUNGS[720], ABR_RUNGS[480], ABR_RUNGS[240], ABR_RUNGS[144]];
-    case 'max_480':  return [ABR_RUNGS[480], ABR_RUNGS[240], ABR_RUNGS[144]];
+    // مناسب لمصادر SD (576p): 4 درجات بلا تكبير — 360 بين 480 و240 تجعل النزول/الصعود سلساً
+    case 'max_480':  return [ABR_RUNGS[480], ABR_RUNGS[360], ABR_RUNGS[240], ABR_RUNGS[144]];
     case 'max_360':  return [ABR_RUNGS[360], ABR_RUNGS[240], ABR_RUNGS[144]];
     default:         return null;
   }
@@ -249,6 +289,8 @@ function buildFFmpegArgs(channel, sourceOverride = null, opts = {}) {
     ? buildAbrLadder(abrMode)
     : null;
   const useAbr = Array.isArray(ladder) && ladder.length > 1;
+  // ترميز عتادي فقط لسلّم ABR وفقط إن نجح فحص detectHwEncoder — وإلا المسار البرمجي كما هو
+  const hwAbr = useAbr && opts.hw === 'vaapi';
 
   const args = [
 
@@ -259,6 +301,11 @@ function buildFFmpegArgs(channel, sourceOverride = null, opts = {}) {
     '-stats_period', '1',
 
   ];
+
+  if (hwAbr) {
+    // خيار عام (قبل -i): جهاز VAAPI لـ hwupload/scale_vaapi/h264_vaapi
+    args.push('-vaapi_device', VAAPI_DEVICE);
+  }
 
 
 
@@ -357,7 +404,35 @@ function buildFFmpegArgs(channel, sourceOverride = null, opts = {}) {
 
 
 
-  if (useAbr) {
+  if (hwAbr) {
+
+    // نفس السلّم على المعالج الرسومي: فك الترميز برمجي (يقبل أي ترميز مصدر: MPEG-2/HEVC…)
+    // ثم رفع الإطار مرة واحدة وتقسيمه، وكل درجة تُحجَّم وتُرمَّز على الرسومي.
+    // min(H,ih) لا يكبّر فوق المصدر، والنسبة (SAR/DAR) تبقى كما هي — مُختبَر على مصدر 576p.
+    const splits = ladder.map((_, i) => `[s${i}]`).join('');
+    const chains = ladder.map((rung, i) => `[s${i}]scale_vaapi=w=-2:h=min(${rung.height}\\,ih)[v${i}]`);
+    args.push('-filter_complex', `[0:v:0]format=nv12,hwupload,split=${ladder.length}${splits};${chains.join(';')}`);
+
+    ladder.forEach((_, i) => {
+      args.push('-map', `[v${i}]`, '-map', '0:a:0');
+    });
+
+    ladder.forEach((rung, i) => {
+      args.push(
+        `-c:v:${i}`, 'h264_vaapi',
+        // h264_vaapi لا يعرف baseline — constrained_baseline هو المكافئ المدعوم
+        `-profile:v:${i}`, rung.profile === 'baseline' ? 'constrained_baseline' : rung.profile,
+        `-b:v:${i}`, rung.vb, `-maxrate:v:${i}`, rung.mr, `-bufsize:v:${i}`, rung.bs,
+        // كيفريم مفروض كل ABR_SEGMENT_SEC → مقاطع 2ث بالضبط (مُختبَر)
+        `-g:v:${i}`, '250',
+        `-force_key_frames:v:${i}`, `expr:gte(t,n_forced*${ABR_SEGMENT_SEC})`,
+        `-c:a:${i}`, 'aac', `-b:a:${i}`, rung.ab, `-ac:a:${i}`, '2',
+      );
+      // الدرجات الصغيرة بسقف 25 إطاراً (مثل يوتيوب) — نصف عمل الرسومي لمصادر 50fps
+      if (rung.height < 480) args.push(`-fpsmax:v:${i}`, '25');
+    });
+
+  } else if (useAbr) {
 
     // سلّم ABR ديناميكي حسب اختيار المدير. كل درجة = نسخة منفصلة من نفس المصدر.
     // الدرجة الأعلى قد تكون نسخة طبق الأصل (copy، بلا تكلفة CPU) في وضع 'source'،
@@ -648,9 +723,10 @@ export async function startStream(channelId, options = {}) {
 
   const sourceForProbe = String(options.sourceOverride || channel.source_url || '').trim();
   const vod = await sourceIsFiniteVod(sourceForProbe);
-  const args = buildFFmpegArgs(channel, options.sourceOverride || null, { abrMode, vod });
+  const hw = abrMode && abrMode !== 'off' ? await detectHwEncoder() : null;
+  const args = buildFFmpegArgs(channel, options.sourceOverride || null, { abrMode, vod, hw });
 
-  log.info({ channelId, slug: channel.slug, abrMode, vod, args: args.join(' ') }, 'Starting FFmpeg');
+  log.info({ channelId, slug: channel.slug, abrMode, vod, hw: hw || 'software', args: args.join(' ') }, 'Starting FFmpeg');
 
 
 

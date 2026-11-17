@@ -2,6 +2,10 @@ FROM node:20-alpine
 
 RUN apk add --no-cache ffmpeg wget coreutils procps docker-cli docker-cli-compose git
 
+# تعريفات Intel VAAPI للترميز العتادي لسلّم ABR (iHD لـBroadwell+ و i965 للأقدم).
+# متوفّرة لـx86_64 فقط — على معماريات أخرى يُتجاوز السطر ويبقى الترميز البرمجي.
+RUN apk add --no-cache intel-media-driver libva-intel-driver 2>/dev/null || echo "VAAPI drivers unavailable for this arch — software ABR"
+
 WORKDIR /app
 
 COPY package*.json ./

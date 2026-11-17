@@ -34,6 +34,28 @@ ensure_docker_dns || true
 echo "=== بناء الواجهة ==="
 build_frontend
 
+echo "=== الترميز العتادي (VAAPI) لسلّم الجودات ==="
+# override تلقائي (غير متتبَّع في git) يعطي الـworker المعالج الرسومي فقط إن وُجد /dev/dri —
+# وضعه في docker-compose.yml مباشرة يمنع تشغيل الحاوية على سيرفر بلا رسومي.
+GPU_OVR="$INSTALL_DIR/docker-compose.override.yml"
+if [ -e /dev/dri/renderD128 ]; then
+  if [ ! -f "$GPU_OVR" ] || grep -q 'streamrelay-gpu-auto' "$GPU_OVR"; then
+    cat > "$GPU_OVR" <<'YML'
+# streamrelay-gpu-auto — يُنشأ تلقائياً من deploy-update.sh لأن السيرفر فيه /dev/dri
+services:
+  worker:
+    devices:
+      - /dev/dri:/dev/dri
+YML
+    echo "  /dev/dri موجود → الـworker يرمّز على المعالج الرسومي"
+  else
+    echo "  docker-compose.override.yml يدوي موجود — لم يُلمس"
+  fi
+else
+  if [ -f "$GPU_OVR" ] && grep -q 'streamrelay-gpu-auto' "$GPU_OVR"; then rm -f "$GPU_OVR"; fi
+  echo "  لا معالج رسومي — الترميز البرمجي"
+fi
+
 echo "=== بناء API و Worker (حزم جديدة مثل ssh2) ==="
 docker compose build api worker
 

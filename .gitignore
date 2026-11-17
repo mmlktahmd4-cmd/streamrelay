@@ -61,3 +61,6 @@ android-app/local.properties
 android-app/signing/
 android-app/.kotlin/
 android-app/*.apk
+
+# يُنشأ تلقائياً عند وجود معالج رسومي (scripts/deploy-update.sh)
+docker-compose.override.yml
