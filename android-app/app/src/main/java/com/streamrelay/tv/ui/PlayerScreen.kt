@@ -167,6 +167,7 @@ fun PlayerScreen(initial: Channel, playlist: List<Channel>, onExit: () -> Unit) 
             view.keepScreenOn = false
             activity?.window?.let { w ->
                 WindowCompat.getInsetsController(w, view).show(WindowInsetsCompat.Type.systemBars())
+                WindowCompat.setDecorFitsSystemWindows(w, true)
             }
             // نعيد الاتجاه فقط إن كنا غيّرناه بالزر — وإلا لا نلمسه حتى لا تنقلب الشاشة عند الخروج
             if (lock[0] != 0) activity?.requestedOrientation = originalOrientation
@@ -175,12 +176,12 @@ fun PlayerScreen(initial: Channel, playlist: List<Channel>, onExit: () -> Unit) 
         }
     }
 
-    // ملء الشاشة = إخفاء أشرطة النظام في الوضع الأفقي فقط.
-    // ⚠ لا تغيّر window.attributes ولا decorFits هنا: تحديث خصائص النافذة يجعل أندرويد يعيد حساب
-    // الاتجاه فتنقلب الشاشة عرض/طول بلا توقف (حدث في 2.2.0). الرسم تحت ثقب الكاميرا مضبوط
-    // مرة واحدة في الثيم (values-v28: windowLayoutInDisplayCutoutMode=shortEdges).
+    // ملء الشاشة = إخفاء أشرطة النظام في الوضع الأفقي فقط، والرسم حتى حافة الشاشة (تحت ثقب
+    // الكاميرا — مسموح من الثيم values-v28 shortEdges؛ decorFits=false يزيل الشريط الجانبي).
+    // لا نلمس window.attributes هنا. (سبب «التقليب بلا توقف» كان مستمع زر ملء الشاشة — انظر تحت.)
     LaunchedEffect(isLandscape) {
         val window = activity?.window ?: return@LaunchedEffect
+        WindowCompat.setDecorFitsSystemWindows(window, !isLandscape)
         val c = WindowCompat.getInsetsController(window, view)
         c.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         if (isLandscape) c.hide(WindowInsetsCompat.Type.systemBars()) else c.show(WindowInsetsCompat.Type.systemBars())
@@ -354,10 +355,14 @@ fun PlayerScreen(initial: Channel, playlist: List<Channel>, onExit: () -> Unit) 
                             PlayerView.ControllerVisibilityListener { v -> controlsVisible = v == View.VISIBLE }
                         )
                         // زر ملء الشاشة داخل شريط التحكم نفسه
-                        setFullscreenButtonClickListener { _ ->
+                        // ⚠ Media3 يستدعي هذا المستمع أيضاً عند setFullscreenButtonState (مزامنة الأيقونة
+                        // في update) لا عند الضغط فقط. المعامل = الحالة المطلوبة؛ ننفّذ فقط إن خالفت الوضع
+                        // الفعلي — وإلا تصير حلقة: أفقي ← مزامنة ← «اضغط» ← طولي ← مزامنة … (حدث 2.1.1–2.2.1
+                        // على سامسونج: 282 قلبة في دقيقة).
+                        setFullscreenButtonClickListener { wantFull ->
                             val land = (activity?.resources?.configuration?.orientation ?: Configuration.ORIENTATION_PORTRAIT) ==
                                 Configuration.ORIENTATION_LANDSCAPE
-                            setFullscreen(!land)
+                            if (wantFull != land) setFullscreen(wantFull)
                         }
                         // قرص بإصبعين (مثل يوتيوب): تكبير = ملء الشاشة، تصغير = ملاءمة — في الوضع الأفقي فقط.
                         // اللمسة الواحدة تمرّ للمشغّل كما هي (إظهار/إخفاء أدوات التحكم).
