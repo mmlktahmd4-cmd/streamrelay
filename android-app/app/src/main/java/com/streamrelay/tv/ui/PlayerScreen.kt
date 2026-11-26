@@ -3,13 +3,11 @@ package com.streamrelay.tv.ui
 import android.app.Activity
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
-import android.os.Build
 import android.provider.Settings
 import android.view.MotionEvent
 import android.view.OrientationEventListener
 import android.view.ScaleGestureDetector
 import android.view.View
-import android.view.WindowManager
 import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
@@ -169,12 +167,6 @@ fun PlayerScreen(initial: Channel, playlist: List<Channel>, onExit: () -> Unit) 
             view.keepScreenOn = false
             activity?.window?.let { w ->
                 WindowCompat.getInsetsController(w, view).show(WindowInsetsCompat.Type.systemBars())
-                WindowCompat.setDecorFitsSystemWindows(w, true)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    w.attributes = w.attributes.apply {
-                        layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
-                    }
-                }
             }
             // نعيد الاتجاه فقط إن كنا غيّرناه بالزر — وإلا لا نلمسه حتى لا تنقلب الشاشة عند الخروج
             if (lock[0] != 0) activity?.requestedOrientation = originalOrientation
@@ -183,18 +175,12 @@ fun PlayerScreen(initial: Channel, playlist: List<Channel>, onExit: () -> Unit) 
         }
     }
 
-    // ملء الشاشة = إخفاء أشرطة النظام في الوضع الأفقي فقط، والرسم حتى حافة الشاشة
-    // (تحت ثقب الكاميرا/النوتش) — بدونه يترك أندرويد شريطاً أسود على جانب الكاميرا.
+    // ملء الشاشة = إخفاء أشرطة النظام في الوضع الأفقي فقط.
+    // ⚠ لا تغيّر window.attributes ولا decorFits هنا: تحديث خصائص النافذة يجعل أندرويد يعيد حساب
+    // الاتجاه فتنقلب الشاشة عرض/طول بلا توقف (حدث في 2.2.0). الرسم تحت ثقب الكاميرا مضبوط
+    // مرة واحدة في الثيم (values-v28: windowLayoutInDisplayCutoutMode=shortEdges).
     LaunchedEffect(isLandscape) {
         val window = activity?.window ?: return@LaunchedEffect
-        WindowCompat.setDecorFitsSystemWindows(window, !isLandscape)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            window.attributes = window.attributes.apply {
-                layoutInDisplayCutoutMode = if (isLandscape)
-                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-                else WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
-            }
-        }
         val c = WindowCompat.getInsetsController(window, view)
         c.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         if (isLandscape) c.hide(WindowInsetsCompat.Type.systemBars()) else c.show(WindowInsetsCompat.Type.systemBars())
