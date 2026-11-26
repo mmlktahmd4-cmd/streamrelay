@@ -65,6 +65,10 @@ if [ -f "${SCRIPT_DIR}/fix-server-ip.sh" ]; then
 fi
 
 echo "=== إعادة تشغيل الحاويات ==="
+echo "=== تسريع إرسال البث (TCP BBR) ==="
+if declare -F enable_tcp_bbr >/dev/null 2>&1; then
+  enable_tcp_bbr || true
+fi
 docker compose up -d postgres redis
 docker compose up -d --force-recreate api worker frontend nginx
 

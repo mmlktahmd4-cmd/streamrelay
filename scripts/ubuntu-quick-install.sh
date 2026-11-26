@@ -45,7 +45,7 @@ if [ -d "$INSTALL_DIR/.git" ] && [ "${STREAMRELAY_REPO_SYNCED:-}" != "1" ]; then
   exec bash "$INSTALL_DIR/scripts/ubuntu-quick-install.sh" "$@"
 fi
 
-INSTALL_SCRIPT_VERSION="2026.11.18-1"
+INSTALL_SCRIPT_VERSION="2026.11.26-1"
 chmod +x "${SCRIPT_DIR}"/*.sh 2>/dev/null || true
 
 load_network_lib() {
@@ -324,6 +324,9 @@ if declare -F stop_host_db_redis_conflicts >/dev/null 2>&1; then
   stop_host_db_redis_conflicts
 else
   systemctl stop redis-server redis postgresql 2>/dev/null || true
+fi
+if declare -F enable_tcp_bbr >/dev/null 2>&1; then
+  enable_tcp_bbr || true
 fi
 docker compose pull postgres redis nginx 2>/dev/null || true
 docker compose build --parallel

@@ -146,6 +146,27 @@ ensure_docker_dns() {
   return 1
 }
 
+# BBR لإرسال البث: على الروابط اللاسلكية (حزم تضيع) cubic يُنصّف السرعة عند كل ضياع
+# فيصل المقطع أبطأ من مدّته والمشغّل «يدور». قيس 2026-11-26: 44–200 → 350–650 KB/s.
+# على المضيف فقط؛ الحاويات تُنشأ بعده فترث BBR تلقائياً. بلا BBR في النواة → يُتخطّى بأمان.
+enable_tcp_bbr() {
+  modprobe tcp_bbr 2>/dev/null || true
+  if ! grep -qw bbr /proc/sys/net/ipv4/tcp_available_congestion_control 2>/dev/null; then
+    echo "      النواة بلا BBR — يبقى الإعداد الافتراضي"
+    return 0
+  fi
+  echo tcp_bbr > /etc/modules-load.d/bbr.conf 2>/dev/null || true
+  printf '%s\n' \
+    '# StreamRelay — إرسال البث بسرعة ثابتة على الروابط الضعيفة' \
+    'net.core.default_qdisc=fq' \
+    'net.ipv4.tcp_congestion_control=bbr' \
+    'net.ipv4.tcp_slow_start_after_idle=0' \
+    > /etc/sysctl.d/99-iptv-tcp.conf 2>/dev/null || true
+  sysctl -q -p /etc/sysctl.d/99-iptv-tcp.conf >/dev/null 2>&1 || true
+  echo "      TCP: $(cat /proc/sys/net/ipv4/tcp_congestion_control 2>/dev/null)"
+  return 0
+}
+
 redis_ping_ok() {
   install_common_dir
   local rp
