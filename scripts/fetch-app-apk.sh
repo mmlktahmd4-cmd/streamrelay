@@ -10,6 +10,13 @@ DEST="${DEST_DIR}/StreamRelay.apk"
 
 mkdir -p "$DEST_DIR"
 
+# نسخة مبنية محلياً على السيرفر (أحدث من إصدار GitHub) — لا تُستبدل بالقديمة عند كل تحديث.
+# لإعادة التنزيل من GitHub: احذف public/app/.local-build
+if [ -f "${DEST_DIR}/.local-build" ] && [ -s "$DEST" ]; then
+  echo "تطبيق الأندرويد مبني محلياً ($(cat "${DEST_DIR}/.local-build" 2>/dev/null)) — لا تنزيل من GitHub."
+  exit 0
+fi
+
 # استخرج owner/repo من remote origin، مع قيمة افتراضية
 REMOTE="$(git -C "$INSTALL_DIR" config --get remote.origin.url 2>/dev/null || true)"
 REPO="$(echo "$REMOTE" | sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##')"

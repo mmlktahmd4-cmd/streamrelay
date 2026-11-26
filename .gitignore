@@ -64,3 +64,4 @@ android-app/*.apk
 
 # يُنشأ تلقائياً عند وجود معالج رسومي (scripts/deploy-update.sh)
 docker-compose.override.yml
+public/app/.local-build

@@ -16,6 +16,7 @@ val Surface2 = Color(0xFF1B2540)
 val TextMain = Color(0xFFE5EAF3)
 val TextDim = Color(0xFF94A3B8)
 val Danger = Color(0xFFF87171)
+val LiveRed = Color(0xFFE11D48)
 
 private val Scheme = darkColorScheme(
     primary = Teal,

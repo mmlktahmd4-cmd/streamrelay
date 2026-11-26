@@ -40,6 +40,11 @@ class Prefs(context: Context) {
         get() = sp.getString("app_title", "") ?: ""
         set(v) = sp.edit().putString("app_title", v).apply()
 
+    /** نسبة العرض في ملء الشاشة: 0 ملاءمة، 1 ملء الشاشة (قصّ بسيط)، 2 تمديد. الافتراضي ملء. */
+    var videoFit: Int
+        get() = sp.getInt("video_fit", 1).coerceIn(0, 2)
+        set(v) = sp.edit().putInt("video_fit", v.coerceIn(0, 2)).apply()
+
     /** آخر قسم اختاره المستخدم — يُستعاد عند فتح التطبيق. */
     var lastCategoryId: String
         get() = sp.getString("last_category", "") ?: ""

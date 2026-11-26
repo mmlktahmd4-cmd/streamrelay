@@ -16,13 +16,14 @@ val hasReleaseKey = signingProps.getProperty("storeFile")?.let { rootProject.fil
 android {
     namespace = "com.streamrelay.tv"
     compileSdk = 36
+    buildToolsVersion = "36.0.0" // الموجود في صورة البناء؛ تنزيل غيره من Google محجوب
 
     defaultConfig {
         applicationId = "com.streamrelay.tv"
         minSdk = 26
         targetSdk = 34
-        versionCode = 200
-        versionName = "2.0.0"
+        versionCode = 220
+        versionName = "2.2.0"
     }
 
     signingConfigs {

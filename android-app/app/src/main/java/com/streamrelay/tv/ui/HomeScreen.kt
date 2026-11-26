@@ -18,6 +18,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -71,6 +76,11 @@ import java.time.Duration
 import java.time.Instant
 
 private const val ALL = ""
+private const val NONE = "__none__"
+
+private data class Section(val id: String, val title: String, val items: List<Channel>)
+
+private val channelOrder = compareBy<Channel>({ it.isVod }, { it.sortOrder }, { it.name })
 
 @Composable
 fun HomeScreen(
@@ -137,6 +147,26 @@ fun HomeScreen(
     val liveItems = filtered.filter { !it.isVod }
     val vodItems = filtered.filter { it.isVod }
 
+    // الأقسام كصفوف أفقية (مثل يوتيوب/نتفليكس) — كل قسم فيه قنوات يظهر بعنوانه،
+    // والقنوات بلا قسم تُجمع في «قنوات أخرى»
+    val sections = remember(channels, categories) {
+        val byCat = channels.groupBy { it.categoryId }
+        val list = mutableListOf<Section>()
+        categories.forEach { c ->
+            byCat[c.id]?.takeIf { it.isNotEmpty() }?.let { list += Section(c.id, c.name, it.sortedWith(channelOrder)) }
+        }
+        val known = categories.map { it.id }.toSet()
+        val others = channels.filter { it.categoryId !in known }.sortedWith(channelOrder)
+        if (others.isNotEmpty()) list += Section(NONE, if (list.isEmpty()) "كل القنوات" else "قنوات أخرى", others)
+        list
+    }
+    val showSections = activeCategory == ALL && search.isBlank() && sections.size > 1
+
+    val open: (Channel, List<Channel>) -> Unit = { ch, list ->
+        if (ch.playable) onPlay(ch, list.filter { it.playable || it.isVod })
+        else Toast.makeText(context, "القناة متوقفة حالياً", Toast.LENGTH_SHORT).show()
+    }
+
     Column(Modifier.fillMaxSize().background(Bg).statusBarsPadding()) {
         // ── الرأس ──
         Row(
@@ -155,11 +185,17 @@ fun HomeScreen(
                     Icon(Icons.Default.Close, contentDescription = "إغلاق", tint = TextMain)
                 }
             } else {
-                Text(
-                    title, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Teal,
-                    modifier = Modifier.weight(1f).padding(start = 8.dp),
-                    maxLines = 1, overflow = TextOverflow.Ellipsis,
-                )
+                Box(
+                    Modifier.padding(start = 6.dp).size(34.dp).clip(RoundedCornerShape(10.dp))
+                        .background(Brush.linearGradient(listOf(Teal, TealDark))),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
+                }
+                Column(Modifier.weight(1f).padding(start = 10.dp)) {
+                    Text(title, fontSize = 19.sp, fontWeight = FontWeight.Bold, color = TextMain, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("${channels.size} قناة", fontSize = 11.sp, color = TextDim, maxLines = 1)
+                }
                 IconButton(onClick = { searchOpen = true }) {
                     Icon(Icons.Default.Search, contentDescription = "بحث", tint = TextMain)
                 }
@@ -214,6 +250,19 @@ fun HomeScreen(
             filtered.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(if (search.isNotBlank()) "لا نتائج" else "لا توجد قنوات متاحة حالياً", color = TextDim)
             }
+            showSections -> LazyColumn(
+                Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(top = 4.dp, bottom = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                items(sections, key = { it.id }) { sec ->
+                    SectionRow(
+                        sec,
+                        onSeeAll = if (sec.id == NONE) null else ({ activeCategory = sec.id; prefs.lastCategoryId = sec.id }),
+                        onOpen = open,
+                    )
+                }
+            }
             else -> LazyVerticalGrid(
                 columns = GridCells.Adaptive(minSize = 108.dp),
                 contentPadding = PaddingValues(10.dp),
@@ -225,10 +274,7 @@ fun HomeScreen(
                     item(span = { GridItemSpan(maxLineSpan) }) { SectionTitle("القنوات") }
                 }
                 items(liveItems, key = { it.id }) { ch ->
-                    ChannelCard(ch) {
-                        if (ch.playable) onPlay(ch, liveItems.filter { it.playable })
-                        else Toast.makeText(context, "القناة متوقفة حالياً", Toast.LENGTH_SHORT).show()
-                    }
+                    ChannelCard(ch) { open(ch, liveItems) }
                 }
                 if (vodItems.isNotEmpty()) {
                     item(span = { GridItemSpan(maxLineSpan) }) { SectionTitle("الأفلام والفيديو") }
@@ -236,6 +282,32 @@ fun HomeScreen(
                         ChannelCard(ch) { onPlay(ch, vodItems) }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SectionRow(section: Section, onSeeAll: (() -> Unit)?, onOpen: (Channel, List<Channel>) -> Unit) {
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth().padding(start = 14.dp, end = 4.dp, top = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.width(4.dp).height(18.dp).clip(RoundedCornerShape(2.dp)).background(Teal))
+            Spacer(Modifier.width(8.dp))
+            Text(section.title, color = TextMain, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+            Spacer(Modifier.width(6.dp))
+            Text("${section.items.size}", color = TextDim, fontSize = 12.sp)
+            Spacer(Modifier.weight(1f))
+            if (onSeeAll != null) TextButton(onClick = onSeeAll) { Text("عرض الكل", color = Teal, fontSize = 13.sp) }
+        }
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            items(section.items, key = { it.id }) { ch ->
+                Box(Modifier.width(150.dp)) { ChannelCard(ch) { onOpen(ch, section.items) } }
             }
         }
     }
@@ -264,9 +336,9 @@ private fun ChannelCard(ch: Channel, onClick: () -> Unit) {
     val dim = !ch.playable
     Column(
         Modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(14.dp))
             .background(Surface1)
-            .border(1.dp, Surface2, RoundedCornerShape(12.dp))
+            .border(1.dp, Surface2, RoundedCornerShape(14.dp))
             .clickable(onClick = onClick)
             .alpha(if (dim) 0.45f else 1f),
     ) {
@@ -294,16 +366,19 @@ private fun ChannelCard(ch: Channel, onClick: () -> Unit) {
                 dim -> "متوقفة"
                 ch.isVod -> "فيلم"
                 ch.onDemand -> "عند الطلب"
-                else -> ""
+                else -> "● مباشر"
             }
-            if (tag.isNotEmpty()) {
-                Text(
-                    tag, color = Color.White, fontSize = 10.sp,
-                    modifier = Modifier.align(Alignment.TopStart).padding(6.dp)
-                        .clip(RoundedCornerShape(6.dp)).background(if (dim) Color(0xAA334155) else Color(0xCC0D9488))
-                        .padding(horizontal = 6.dp, vertical = 2.dp),
-                )
+            val tagBg = when {
+                dim -> Color(0xAA334155)
+                !ch.isVod && !ch.onDemand -> LiveRed
+                else -> Color(0xCC0D9488)
             }
+            Text(
+                tag, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.align(Alignment.TopStart).padding(6.dp)
+                    .clip(RoundedCornerShape(6.dp)).background(tagBg)
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
+            )
         }
         Text(
             ch.name, color = TextMain, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
